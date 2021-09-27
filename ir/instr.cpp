@@ -3899,6 +3899,21 @@ void X86IntrinBinOp::print(ostream &os) const {
   case avx2_psrl_q:
     str = "x86.avx2.psrl.q ";
     break;
+  case sse2_pavg_w:
+    str = "x86.sse2.pavg.w ";
+    break;
+  case avx2_pavg_b:
+    str = "x86.avx2.pavg.b ";
+    break;
+  case avx2_pavg_w:
+    str = "x86.avx2.pavg.w ";
+    break;
+  case avx2_pshuf_b:
+    str = "x86.avx2.pshuf.b ";
+    break;
+  case ssse3_pshuf_b_128:
+    str = "x86.ssse3.pshuf.b.128 ";
+    break;
   }
   os << getName() << " = " << str << *a << ", " << *b;
 }
@@ -3939,6 +3954,60 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
                           ai.value.lshr(shift_v.trunc(elem_bw)));
       vals.emplace_back(move(v), shift_np && ai.non_poison);
     }
+    return rty->aggregateVals(vals);
+  }
+  case sse2_pavg_w:
+  case avx2_pavg_b:
+  case avx2_pavg_w:
+  {
+    vector<StateValue> vals;
+    function<expr(const expr&, const expr&)> fn;
+    switch (op) {
+    case avx2_pavg_b:
+      fn = [&](auto a, auto b) -> expr {
+        return (a + b + expr::mkUInt(1, 8)).lshr(expr::mkUInt(1, 8));
+      };
+      break;
+    case sse2_pavg_w:
+    case avx2_pavg_w:
+      fn = [&](auto a, auto b) -> expr {
+        return (a + b + expr::mkUInt(1, 16)).lshr(expr::mkUInt(1, 16));
+      };
+      break;
+    default: UNREACHABLE();
+    }
+    for (unsigned i = 0, e = rty->numElementsConst(); i != e; ++i) {
+      auto ai = aty->extract(av, i);
+      auto bi = bty->extract(bv, i);
+      vals.emplace_back(fn(ai.value, bi.value),
+                        ai.non_poison && bi.non_poison);
+    }
+    return rty->aggregateVals(vals);
+  }
+  case ssse3_pshuf_b_128:
+  case avx2_pshuf_b:
+  {
+    auto avty = static_cast<const VectorType*>(aty);
+    vector<StateValue> vals;
+    unsigned c;
+    switch (op) {
+    case ssse3_pshuf_b_128: c = 16; break;
+    case avx2_pshuf_b: c = 32; break;
+    default: UNREACHABLE();
+    }
+    for (unsigned i = 0, e = c; i != e; ++i) {
+      auto b = (bty->extract(bv, i).value);
+      auto r = avty->extract(av, b & expr::mkUInt(127, 8));
+      auto ai = expr::mkIf(b.extract(7, 7) == expr::mkUInt(0, 1),
+                            r.value,
+                            expr::mkUInt(0, 8));
+      auto pi = expr::mkIf(b.extract(7, 7) == expr::mkUInt(0, 1),
+                            b.ule(expr::mkUInt(31, 8)) && r.non_poison,
+                            true);
+
+      vals.emplace_back(move(ai), move(pi));
+    }
+
     return rty->aggregateVals(vals);
   }
   // TODO: add semantic for other intrinsics
