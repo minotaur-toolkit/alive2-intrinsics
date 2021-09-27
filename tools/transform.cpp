@@ -82,7 +82,7 @@ static void print_single_varval(ostream &os, const State &st, const Model &m,
   }
 }
 
-static void print_varval(ostream &os, const State &st, const Model &m,
+       void print_varval(ostream &os, const State &st, const Model &m,
                          const Value *var, const Type &type,
                          const StateValue &val, unsigned child = 0) {
   if (!type.isAggregateType()) {
@@ -739,7 +739,7 @@ static void initBitsProgramPointer(Transform &t) {
   assert(bits_program_pointer == t.tgt.bitsPointers());
 }
 
-static void calculateAndInitConstants(Transform &t) {
+void calculateAndInitConstants(Transform &t) {
   if (!bits_program_pointer)
     initBitsProgramPointer(t);
 
