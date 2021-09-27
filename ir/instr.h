@@ -1192,38 +1192,58 @@ public:
 class X86IntrinBinOp final : public Instr {
 public:
   enum Op {
-  /* llvm.x86.sse2.psrl.w */ sse2_psrl_w,
-  /* llvm.x86.sse2.psrl.d */ sse2_psrl_d,
-  /* llvm.x86.sse2.psrl.q */ sse2_psrl_q,
-  /* llvm.x86.avx2.psrl.w */ avx2_psrl_w,
-  /* llvm.x86.avx2.psrl.d */ avx2_psrl_d,
-  /* llvm.x86.avx2.psrl.q */ avx2_psrl_q
+  /* llvm.x86.sse2.psrl.w */       sse2_psrl_w,
+  /* llvm.x86.sse2.psrl.d */       sse2_psrl_d,
+  /* llvm.x86.sse2.psrl.q */       sse2_psrl_q,
+  /* llvm.x86.avx2.psrl.w */       avx2_psrl_w,
+  /* llvm.x86.avx2.psrl.d */       avx2_psrl_d,
+  /* llvm.x86.avx2.psrl.q */       avx2_psrl_q,
+  /* llvm.x86.sse2.pavg.w */       sse2_pavg_w,
+  /* llvm.x86.avx2.pavg.b */       avx2_pavg_b,
+  /* llvm.x86.avx2.pavg.w */       avx2_pavg_w,
+  /* llvm.x86.avx2.pshuf.b */      avx2_pshuf_b,
+  /* llvm.x86.ssse2.pshuf.b.128 */ ssse3_pshuf_b_128,
   };
 
   // the shape of a vector is stored as <# of lanes, element bits>
-  static constexpr std::array<std::pair<unsigned, unsigned>, 6> shape_op0 = {
+  static constexpr std::array<std::pair<unsigned, unsigned>, 11> shape_op0 = {
   /* sse2_psrl_w */       std::make_pair(8, 16),
   /* sse2_psrl_d */       std::make_pair(4, 32),
   /* sse2_psrl_w */       std::make_pair(2, 64),
   /* avx2_psrl_w */       std::make_pair(16, 16),
   /* avx2_psrl_d */       std::make_pair(8, 32),
   /* avx2_psrl_w */       std::make_pair(4, 64),
+  /* sse2_pavg_w */       std::make_pair(8, 16),
+  /* avx2_pavg_b */       std::make_pair(32, 8),
+  /* avx2_pavg_w */       std::make_pair(16, 16),
+  /* avx2_pshuf_b */      std::make_pair(32, 8),
+  /* ssse3_pshuf_b_128 */ std::make_pair(16, 8)
   };
-  static constexpr std::array<std::pair<unsigned, unsigned>, 6> shape_op1 = {
+  static constexpr std::array<std::pair<unsigned, unsigned>, 11> shape_op1 = {
   /* sse2_psrl_w */       std::make_pair(8, 16),
   /* sse2_psrl_d */       std::make_pair(4, 32),
   /* sse2_psrl_w */       std::make_pair(2, 64),
   /* avx2_psrl_w */       std::make_pair(8, 16),
   /* avx2_psrl_d */       std::make_pair(4, 32),
   /* avx2_psrl_w */       std::make_pair(2, 64),
+  /* sse2_pavg_w */       std::make_pair(8, 16),
+  /* avx2_pavg_b */       std::make_pair(32, 8),
+  /* avx2_pavg_w */       std::make_pair(16, 16),
+  /* avx2_pshuf_b */      std::make_pair(32, 8),
+  /* ssse3_pshuf_b_128 */ std::make_pair(16, 8)
   };
-  static constexpr std::array<std::pair<unsigned, unsigned>, 6> shape_ret = {
+  static constexpr std::array<std::pair<unsigned, unsigned>, 11> shape_ret = {
   /* sse2_psrl_w */       std::make_pair(8, 16),
   /* sse2_psrl_d */       std::make_pair(4, 32),
   /* sse2_psrl_w */       std::make_pair(2, 64),
   /* avx2_psrl_w */       std::make_pair(16, 16),
   /* avx2_psrl_d */       std::make_pair(8, 32),
   /* avx2_psrl_w */       std::make_pair(4, 64),
+  /* sse2_pavg_w */       std::make_pair(8, 16),
+  /* avx2_pavg_b */       std::make_pair(32, 8),
+  /* avx2_pavg_w */       std::make_pair(16, 16),
+  /* avx2_pshuf_b */      std::make_pair(32, 8),
+  /* ssse3_pshuf_b_128 */ std::make_pair(16, 8)
   };
 
 private:

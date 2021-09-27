@@ -888,7 +888,7 @@ static uint64_t aligned_alloc_size(uint64_t size, uint64_t align) {
   return add_saturate(size, align - 1);
 }
 
-static void calculateAndInitConstants(Transform &t) {
+void calculateAndInitConstants(Transform &t) {
   if (!bits_program_pointer)
     initBitsProgramPointer(t);
 
