@@ -4920,19 +4920,16 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
 }
 
 expr X86IntrinBinOp::getTypeConstraints(const Function &f) const {
-  auto &[op0_elems, op0_bw] = shape_op0[op];
-  auto &[op1_elems, op1_bw] = shape_op1[op];
-  auto &[ret_elems, ret_bw] = shape_ret[op];
   return Value::getTypeConstraints() &&
     a->getType().enforceVectorType(
-      [op0_bw](auto &ty) { return ty.enforceIntType(op0_bw); }) &&
+      [this](auto &ty) { return ty.enforceIntType(shape_op0[op].second); }) &&
     b->getType().enforceVectorType(
-      [op1_bw](auto &ty) { return ty.enforceIntType(op1_bw); }) &&
+      [this](auto &ty) { return ty.enforceIntType(shape_op1[op].second); }) &&
        getType().enforceVectorType(
-      [ret_bw](auto &ty) { return ty.enforceIntType(ret_bw); }) &&
-    a->getType().getAsAggregateType()->numElements() == op0_elems &&
-    b->getType().getAsAggregateType()->numElements() == op1_elems &&
-       getType().getAsAggregateType()->numElements() == ret_elems;
+      [this](auto &ty) { return ty.enforceIntType(shape_ret[op].second); }) &&
+    a->getType().getAsAggregateType()->numElements() == shape_op0[op].first &&
+    b->getType().getAsAggregateType()->numElements() == shape_op1[op].first &&
+       getType().getAsAggregateType()->numElements() == shape_ret[op].first;
 }
 
 unique_ptr<Instr> X86IntrinBinOp::dup(const string &suffix) const {
