@@ -960,10 +960,13 @@ public:
   /* llvm.x86.avx2.pavg.w */       avx2_pavg_w,
   /* llvm.x86.avx2.pshuf.b */      avx2_pshuf_b,
   /* llvm.x86.ssse2.pshuf.b.128 */ ssse3_pshuf_b_128,
+  /* llvm.x86.mmx.padd.b */	   mmx_padd_b,
+  /* llvm.x86.mmx.padd.w */	   mmx_padd_w,
+  /* llvm.x86.mmx.padd.d */	   mmx_padd_d,
   };
 
   // the shape of a vector is stored as <# of lanes, element bits>
-  static constexpr std::array<std::pair<unsigned, unsigned>, 11> shape_op0 = {
+  static constexpr std::array<std::pair<unsigned, unsigned>, 14> shape_op0 = {
   /* sse2_psrl_w */       std::make_pair(8, 16),
   /* sse2_psrl_d */       std::make_pair(4, 32),
   /* sse2_psrl_w */       std::make_pair(2, 64),
@@ -974,9 +977,12 @@ public:
   /* avx2_pavg_b */       std::make_pair(32, 8),
   /* avx2_pavg_w */       std::make_pair(16, 16),
   /* avx2_pshuf_b */      std::make_pair(32, 8),
-  /* ssse3_pshuf_b_128 */ std::make_pair(16, 8)
+  /* ssse3_pshuf_b_128 */ std::make_pair(16, 8),
+  /* mmx_padd_b */	  std::make_pair(8, 8),
+  /* mmx_padd_w */	  std::make_pair(4, 16),
+  /* mmx_padd_d */	  std::make_pair(2, 32)
   };
-  static constexpr std::array<std::pair<unsigned, unsigned>, 11> shape_op1 = {
+  static constexpr std::array<std::pair<unsigned, unsigned>, 14> shape_op1 = {
   /* sse2_psrl_w */       std::make_pair(8, 16),
   /* sse2_psrl_d */       std::make_pair(4, 32),
   /* sse2_psrl_w */       std::make_pair(2, 64),
@@ -987,9 +993,12 @@ public:
   /* avx2_pavg_b */       std::make_pair(32, 8),
   /* avx2_pavg_w */       std::make_pair(16, 16),
   /* avx2_pshuf_b */      std::make_pair(32, 8),
-  /* ssse3_pshuf_b_128 */ std::make_pair(16, 8)
+  /* ssse3_pshuf_b_128 */ std::make_pair(16, 8),
+  /* mmx_padd_b */	  std::make_pair(8, 8),
+  /* mmx_padd_w */	  std::make_pair(4, 16),
+  /* mmx_padd_d */	  std::make_pair(2, 32)
   };
-  static constexpr std::array<std::pair<unsigned, unsigned>, 11> shape_ret = {
+  static constexpr std::array<std::pair<unsigned, unsigned>, 14> shape_ret = {
   /* sse2_psrl_w */       std::make_pair(8, 16),
   /* sse2_psrl_d */       std::make_pair(4, 32),
   /* sse2_psrl_w */       std::make_pair(2, 64),
@@ -1000,7 +1009,10 @@ public:
   /* avx2_pavg_b */       std::make_pair(32, 8),
   /* avx2_pavg_w */       std::make_pair(16, 16),
   /* avx2_pshuf_b */      std::make_pair(32, 8),
-  /* ssse3_pshuf_b_128 */ std::make_pair(16, 8)
+  /* ssse3_pshuf_b_128 */ std::make_pair(16, 8),
+  /* mmx_padd_b */	  std::make_pair(8, 8),
+  /* mmx_padd_w */	  std::make_pair(4, 16),
+  /* mmx_padd_d */	  std::make_pair(2, 32)
   };
 
 private:
