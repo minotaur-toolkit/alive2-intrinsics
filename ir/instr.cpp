@@ -4671,6 +4671,15 @@ void X86IntrinBinOp::print(ostream &os) const {
   case ssse3_pshuf_b_128:
     str = "x86.ssse3.pshuf.b.128 ";
     break;
+  case mmx_padd_b:
+    str = "x86.mmx.padd.b ";
+    break;
+  case mmx_padd_w:
+    str = "x86.mmx.padd.w ";
+    break;
+  case mmx_padd_d:
+    str = "x86.mmx.padd.d ";
+    break;
   }
   os << getName() << " = " << str << *a << ", " << *b;
 }
@@ -4716,6 +4725,9 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
   case sse2_pavg_w:
   case avx2_pavg_b:
   case avx2_pavg_w:
+  case mmx_padd_b:
+  case mmx_padd_w:
+  case mmx_padd_d:
   {
     vector<StateValue> vals;
     function<expr(const expr&, const expr&)> fn;
@@ -4729,6 +4741,13 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
     case avx2_pavg_w:
       fn = [&](auto a, auto b) -> expr {
         return (a + b + expr::mkUInt(1, 16)).lshr(expr::mkUInt(1, 16));
+      };
+      break;
+    case mmx_padd_b:
+    case mmx_padd_w:
+    case mmx_padd_d:
+      fn = [&](auto a, auto b) -> expr {
+        return a + b;
       };
       break;
     default: UNREACHABLE();
