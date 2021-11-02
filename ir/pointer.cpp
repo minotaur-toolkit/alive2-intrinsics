@@ -170,8 +170,7 @@ expr Pointer::isConstGlobal() const {
   auto generic = bid.uge(has_null_block) &&
                  expr(num_consts_src > 0) &&
                  bid.ule(num_consts_src + has_null_block - 1);
-  auto tgt = bid.uge(num_nonlocals_src + num_extra_nonconst_tgt) &&
-             bid.ule(num_nonlocals - 1);
+  auto tgt = bid.uge(num_nonlocals_src) && bid.ule(num_nonlocals - 1);
   return !isLocal() && (generic || tgt);
 }
 
@@ -327,7 +326,7 @@ expr Pointer::isBlockAligned(uint64_t align, bool exact) const {
   return exact ? blk_align == bits : blk_align.uge(bits);
 }
 
-expr Pointer::isAligned(unsigned align) {
+expr Pointer::isAligned(uint64_t align) {
   if (align == 1)
     return true;
 
@@ -360,7 +359,7 @@ expr Pointer::isAligned(unsigned align) {
 static pair<expr, expr> is_dereferenceable(Pointer &p,
                                            const expr &bytes_off,
                                            const expr &bytes,
-                                           unsigned align, bool iswrite) {
+                                           uint64_t align, bool iswrite) {
   expr block_sz = p.blockSizeOffsetT();
   expr offset = p.getOffset();
 
@@ -387,7 +386,7 @@ static pair<expr, expr> is_dereferenceable(Pointer &p,
 }
 
 // When bytes is 0, pointer is always derefenceable
-AndExpr Pointer::isDereferenceable(const expr &bytes0, unsigned align,
+AndExpr Pointer::isDereferenceable(const expr &bytes0, uint64_t align,
                                    bool iswrite) {
   expr bytes_off = bytes0.zextOrTrunc(bits_for_offset);
   expr bytes = bytes0.zextOrTrunc(bits_size_t);
@@ -425,7 +424,7 @@ AndExpr Pointer::isDereferenceable(const expr &bytes0, unsigned align,
   return exprs;
 }
 
-AndExpr Pointer::isDereferenceable(uint64_t bytes, unsigned align,
+AndExpr Pointer::isDereferenceable(uint64_t bytes, uint64_t align,
                                    bool iswrite) {
   return isDereferenceable(expr::mkUInt(bytes, bits_size_t), align, iswrite);
 }
@@ -526,8 +525,8 @@ expr Pointer::isWritable() const {
   expr non_local
     = num_consts_src == 1 ? bid != has_null_block :
         (num_consts_src ? bid.ugt(has_null_block + num_consts_src - 1) : true);
-  if (m.numNonlocals() > num_nonlocals_src + num_extra_nonconst_tgt)
-    non_local &= bid.ult(num_nonlocals_src + num_extra_nonconst_tgt);
+  if (m.numNonlocals() > num_nonlocals_src)
+    non_local &= bid.ult(num_nonlocals_src);
   return isLocal() || non_local;
 }
 

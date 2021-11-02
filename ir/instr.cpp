@@ -236,8 +236,7 @@ void BinOp::print(ostream &os) const {
     os << "nuw ";
   if (flags & Exact)
     os << "exact ";
-  os << fmath
-     << print_type(getType()) << lhs->getName() << ", " << rhs->getName();
+  os << fmath << *lhs << ", " << rhs->getName();
 }
 
 static void div_ub(State &s, const expr &a, const expr &b, const expr &ap,
@@ -2705,7 +2704,7 @@ bool Malloc::canFree() const {
   return ptr != nullptr;
 }
 
-unsigned Malloc::getAlign() const {
+uint64_t Malloc::getAlign() const {
   return align ? align : heap_block_alignment;
 }
 
@@ -2805,7 +2804,7 @@ Calloc::ByteAccessInfo Calloc::getByteAccessInfo() const {
   return info;
 }
 
-unsigned Calloc::getAlign() const {
+uint64_t Calloc::getAlign() const {
   return align ? align : heap_block_alignment;
 }
 
@@ -3209,8 +3208,9 @@ StateValue Memset::toSMT(State &s) const {
   } else {
     auto &sv_ptr = s[*ptr];
     auto &sv_ptr2 = s[*ptr];
-    s.addUB((vbytes != 0).implies(
-        sv_ptr.non_poison && (sv_ptr.value == sv_ptr2.value)));
+    // can't be poison even if bytes=0 as address must be aligned regardless
+    s.addUB(sv_ptr.non_poison);
+    s.addUB((vbytes != 0).implies(sv_ptr.value == sv_ptr2.value));
     vptr = sv_ptr.value;
   }
   check_can_store(s, vptr);
@@ -4011,19 +4011,16 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
 }
 
 expr X86IntrinBinOp::getTypeConstraints(const Function &f) const {
-  auto &[op0_elems, op0_bw] = shape_op0[op];
-  auto &[op1_elems, op1_bw] = shape_op1[op];
-  auto &[ret_elems, ret_bw] = shape_ret[op];
   return Value::getTypeConstraints() &&
     a->getType().enforceVectorType(
-      [op0_bw](auto &ty) { return ty.enforceIntType(op0_bw); }) &&
+      [this](auto &ty) { return ty.enforceIntType(shape_op0[op].second); }) &&
     b->getType().enforceVectorType(
-      [op1_bw](auto &ty) { return ty.enforceIntType(op1_bw); }) &&
+      [this](auto &ty) { return ty.enforceIntType(shape_op1[op].second); }) &&
        getType().enforceVectorType(
-      [ret_bw](auto &ty) { return ty.enforceIntType(ret_bw); }) &&
-    a->getType().getAsAggregateType()->numElements() == op0_elems &&
-    b->getType().getAsAggregateType()->numElements() == op1_elems &&
-       getType().getAsAggregateType()->numElements() == ret_elems;
+      [this](auto &ty) { return ty.enforceIntType(shape_ret[op].second); }) &&
+    a->getType().getAsAggregateType()->numElements() == shape_op0[op].first &&
+    b->getType().getAsAggregateType()->numElements() == shape_op1[op].first &&
+       getType().getAsAggregateType()->numElements() == shape_ret[op].first;
 }
 
 unique_ptr<Instr> X86IntrinBinOp::dup(const string &suffix) const {
@@ -4038,6 +4035,7 @@ const ConversionOp* isCast(ConversionOp::Op op, const Value &v) {
 
 bool hasNoSideEffects(const Instr &i) {
   return isNoOp(i) ||
+         dynamic_cast<const ExtractValue*>(&i) ||
          dynamic_cast<const GEP*>(&i) ||
          dynamic_cast<const ShuffleVector*>(&i);
 }
