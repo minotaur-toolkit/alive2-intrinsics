@@ -1119,6 +1119,7 @@ public:
 
 
 class X86IntrinBinOp final : public Instr {
+  static constexpr unsigned numOfX86Intrinsics = 20;
 public:
   enum Op {
   /* llvm.x86.sse2.psrl.w */       sse2_psrl_w,
@@ -1135,10 +1136,16 @@ public:
   /* llvm.x86.mmx.padd.b */	   mmx_padd_b,
   /* llvm.x86.mmx.padd.w */	   mmx_padd_w,
   /* llvm.x86.mmx.padd.d */	   mmx_padd_d,
+  /* llvm.x86.mmx.punpckhbw */	   mmx_punpckhbw,
+  /* llvm.x86.mmx.punpckhwd */	   mmx_punpckhwd,
+  /* llvm.x86.mmx.punpckhdq */	   mmx_punpckhdq,
+  /* llvm.x86.mmx.punpcklbw */	   mmx_punpcklbw,
+  /* llvm.x86.mmx.punpcklwd */	   mmx_punpcklwd,
+  /* llvm.x86.mmx.punpckldq */	   mmx_punpckldq,
   };
 
   // the shape of a vector is stored as <# of lanes, element bits>
-  static constexpr std::array<std::pair<unsigned, unsigned>, 14> shape_op0 = {
+  static constexpr std::array<std::pair<unsigned, unsigned>, numOfX86Intrinsics> shape_op0 = {
   /* sse2_psrl_w */       std::make_pair(8, 16),
   /* sse2_psrl_d */       std::make_pair(4, 32),
   /* sse2_psrl_w */       std::make_pair(2, 64),
@@ -1152,9 +1159,15 @@ public:
   /* ssse3_pshuf_b_128 */ std::make_pair(16, 8),
   /* mmx_padd_b */	  std::make_pair(8, 8),
   /* mmx_padd_w */	  std::make_pair(4, 16),
-  /* mmx_padd_d */	  std::make_pair(2, 32)
+  /* mmx_padd_d */	  std::make_pair(2, 32),
+  /* mmx_punpckhbw */	  std::make_pair(8, 8),
+  /* mmx_punpckhwd */	  std::make_pair(4, 16),
+  /* mmx_punpckhdq */	  std::make_pair(2, 32),
+  /* mmx_punpcklbw */	  std::make_pair(8, 8),
+  /* mmx_punpcklwd */	  std::make_pair(4, 16),
+  /* mmx_punpckldq */	  std::make_pair(2, 32)
   };
-  static constexpr std::array<std::pair<unsigned, unsigned>, 14> shape_op1 = {
+  static constexpr std::array<std::pair<unsigned, unsigned>, numOfX86Intrinsics> shape_op1 = {
   /* sse2_psrl_w */       std::make_pair(8, 16),
   /* sse2_psrl_d */       std::make_pair(4, 32),
   /* sse2_psrl_w */       std::make_pair(2, 64),
@@ -1168,9 +1181,15 @@ public:
   /* ssse3_pshuf_b_128 */ std::make_pair(16, 8),
   /* mmx_padd_b */	  std::make_pair(8, 8),
   /* mmx_padd_w */	  std::make_pair(4, 16),
-  /* mmx_padd_d */	  std::make_pair(2, 32)
+  /* mmx_padd_d */	  std::make_pair(2, 32),
+  /* mmx_punpckhbw */	  std::make_pair(8, 8),
+  /* mmx_punpckhwd */	  std::make_pair(4, 16),
+  /* mmx_punpckhdq */	  std::make_pair(2, 32),
+  /* mmx_punpcklbw */	  std::make_pair(8, 8),
+  /* mmx_punpcklwd */	  std::make_pair(4, 16),
+  /* mmx_punpckldq */	  std::make_pair(2, 32)
   };
-  static constexpr std::array<std::pair<unsigned, unsigned>, 14> shape_ret = {
+  static constexpr std::array<std::pair<unsigned, unsigned>, numOfX86Intrinsics> shape_ret = {
   /* sse2_psrl_w */       std::make_pair(8, 16),
   /* sse2_psrl_d */       std::make_pair(4, 32),
   /* sse2_psrl_w */       std::make_pair(2, 64),
@@ -1184,7 +1203,13 @@ public:
   /* ssse3_pshuf_b_128 */ std::make_pair(16, 8),
   /* mmx_padd_b */	  std::make_pair(8, 8),
   /* mmx_padd_w */	  std::make_pair(4, 16),
-  /* mmx_padd_d */	  std::make_pair(2, 32)
+  /* mmx_padd_d */	  std::make_pair(2, 32),
+  /* mmx_punpckhbw */	  std::make_pair(8, 8),
+  /* mmx_punpckhwd */	  std::make_pair(4, 16),
+  /* mmx_punpckhdq */	  std::make_pair(2, 32),
+  /* mmx_punpcklbw */	  std::make_pair(8, 8),
+  /* mmx_punpcklwd */	  std::make_pair(4, 16),
+  /* mmx_punpckldq */	  std::make_pair(2, 32)
   };
 
 private:
