@@ -4777,6 +4777,85 @@ void X86IntrinBinOp::print(ostream &os) const {
   case mmx_punpckldq:
     str = "x86.mmx.punpckldq ";
     break;
+  case sse2_psrai_w:
+    str = "x86.sse2.psrai.w ";
+    break;
+  case sse2_psrai_d:
+    str = "x86.sse2.psrai.d ";
+    break;
+  case avx2_psrai_w:
+    str = "x86.avx2.psrai.w ";
+    break;
+  case avx2_psrai_d:
+    str = "x86.avx2.psrai.d ";
+    break;
+  case avx512_psrai_w_512:
+    str = "x86.avx512.psrai.w.512 ";
+    break;
+  case avx512_psrai_d_512:
+    str = "x86.avx512.psrai.d.512 ";
+    break;
+  case avx512_psrai_q_128:
+    str = "x86.avx512.psrai.q.128 ";
+    break;
+  case avx512_psrai_q_256:
+    str = "x86.avx512.psrai.q.256 ";
+    break;
+  case avx512_psrai_q_512:
+    str = "x86.avx512.psrai.q.512 ";
+    break;
+  case sse2_psrli_w:
+    str = "x86.sse2.psrli.w ";
+    break;
+  case sse2_psrli_d:
+    str = "x86.sse2.psrli.d ";
+    break;
+  case sse2_psrli_q:
+    str = "x86.sse2.psrli.q ";
+    break;
+  case avx2_psrli_w:
+    str = "x86.avx2.psrli.w ";
+    break;
+  case avx2_psrli_d:
+    str = "x86.avx2.psrli.d ";
+    break;
+  case avx2_psrli_q:
+    str = "x86.avx2.psrli.q ";
+    break;
+  case avx512_psrli_w_512:
+    str = "x86.avx512.psrli.w.512 ";
+    break;
+  case avx512_psrli_d_512:
+    str = "x86.avx512.psrli.d.512 ";
+    break;
+  case avx512_psrli_q_512:
+    str = "x86.avx512.psrli.q.512 ";
+  case sse2_pslli_w:
+    str = "x86.sse2.pslli.w ";
+    break;
+  case sse2_pslli_d:
+    str = "x86.sse2.pslli.d ";
+    break;
+  case sse2_pslli_q:
+    str = "x86.sse2.pslli.q ";
+    break;
+  case avx2_pslli_w:
+    str = "x86.avx2.pslli.w ";
+    break;
+  case avx2_pslli_d:
+    str = "x86.avx2.pslli.d ";
+    break;
+  case avx2_pslli_q:
+    str = "x86.avx2.pslli.q ";
+    break;
+  case avx512_pslli_w_512:
+    str = "x86.avx512.pslli.w.512 ";
+    break;
+  case avx512_pslli_d_512:
+    str = "x86.avx512.pslli.d.512 ";
+    break;
+  case avx512_pslli_q_512:
+    str = "x86.avx512.pslli.q.512 ";
   }
   os << getName() << " = " << str << *a << ", " << *b;
 }
@@ -4912,6 +4991,98 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
 
     return rty->aggregateVals(vals);
   }
+  case sse2_psrai_w:
+  case sse2_psrai_d:
+  case avx2_psrai_w:
+  case avx2_psrai_d:
+  case avx512_psrai_w_512:
+  case avx512_psrai_d_512:
+  case avx512_psrai_q_128:
+  case avx512_psrai_q_256:
+  case avx512_psrai_q_512:
+  case sse2_psrli_w:
+  case sse2_psrli_d:
+  case sse2_psrli_q:
+  case avx2_psrli_w:
+  case avx2_psrli_d:
+  case avx2_psrli_q:
+  case avx512_psrli_w_512:
+  case avx512_psrli_d_512:
+  case avx512_psrli_q_512:
+  case sse2_pslli_w:
+  case sse2_pslli_d:
+  case sse2_pslli_q:
+  case avx2_pslli_w:
+  case avx2_pslli_d:
+  case avx2_pslli_q:
+  case avx512_pslli_w_512:
+  case avx512_pslli_d_512:
+  case avx512_pslli_q_512: {
+    vector<StateValue> vals;
+    function<expr(const expr&, const expr&)> fn;
+    switch (op) {
+    case sse2_psrai_w:
+    case sse2_psrai_d:
+    case avx2_psrai_w:
+    case avx2_psrai_d:
+    case avx512_psrai_w_512:
+    case avx512_psrai_d_512:
+    case avx512_psrai_q_128:
+    case avx512_psrai_q_256:
+    case avx512_psrai_q_512:
+      fn = [&](auto a, auto b) -> expr {
+        unsigned sz_a = a.bits();
+        expr check = b.uge(expr::mkUInt(sz_a, 32));
+        expr outbounds = expr::mkIf(a.isNegative(),
+                                    expr::mkInt(-1, sz_a),
+                                    expr::mkUInt(0, sz_a));
+        expr inbounds = a.ashr(b.zextOrTrunc(sz_a));
+        return expr::mkIf(move(check), move(outbounds), move(inbounds));
+      };
+      break;
+    case sse2_psrli_w:
+    case sse2_psrli_d:
+    case sse2_psrli_q:
+    case avx2_psrli_w:
+    case avx2_psrli_d:
+    case avx2_psrli_q:
+    case avx512_psrli_w_512:
+    case avx512_psrli_d_512:
+    case avx512_psrli_q_512:
+      fn = [&](auto a, auto b) -> expr {
+        unsigned sz_a = a.bits();
+        expr check = b.uge(expr::mkUInt(sz_a, 32));
+        expr outbounds = expr::mkUInt(0, sz_a);
+        expr inbounds = a.lshr(b.zextOrTrunc(sz_a));
+        return expr::mkIf(move(check), move(outbounds), move(inbounds));
+      };
+      break;
+    case sse2_pslli_w:
+    case sse2_pslli_d:
+    case sse2_pslli_q:
+    case avx2_pslli_w:
+    case avx2_pslli_d:
+    case avx2_pslli_q:
+    case avx512_pslli_w_512:
+    case avx512_pslli_d_512:
+    case avx512_pslli_q_512:
+      fn = [&](auto a, auto b) -> expr {
+        unsigned sz_a = a.bits();
+        expr check = b.uge(expr::mkUInt(sz_a, 32));
+        expr outbounds = expr::mkUInt(0, sz_a);
+        expr inbounds = a << b.zextOrTrunc(sz_a);
+        return expr::mkIf(move(check), move(outbounds), move(inbounds));
+      };
+      break;
+    default: UNREACHABLE();
+    }
+    for (unsigned i = 0, e = rty->numElementsConst(); i != e; ++i) {
+      auto ai = aty->extract(av, i);
+      vals.emplace_back(fn(ai.value, bv.value),
+                        ai.non_poison && bv.non_poison);
+    }
+    return rty->aggregateVals(vals);
+  }
   // TODO: add semantic for other intrinsics
   default:
     UNREACHABLE();
@@ -4920,15 +5091,21 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
 
 expr X86IntrinBinOp::getTypeConstraints(const Function &f) const {
   return Value::getTypeConstraints() &&
-    a->getType().enforceVectorType(
-      [this](auto &ty) { return ty.enforceIntType(shape_op0[op].second); }) &&
-    b->getType().enforceVectorType(
-      [this](auto &ty) { return ty.enforceIntType(shape_op1[op].second); }) &&
-       getType().enforceVectorType(
-      [this](auto &ty) { return ty.enforceIntType(shape_ret[op].second); }) &&
-    a->getType().getAsAggregateType()->numElements() == shape_op0[op].first &&
-    b->getType().getAsAggregateType()->numElements() == shape_op1[op].first &&
-       getType().getAsAggregateType()->numElements() == shape_ret[op].first;
+    (shape_op0[op].first != 1
+      ? a->getType().enforceVectorType(
+          [this](auto &ty) {return ty.enforceIntType(shape_op0[op].second);}) &&
+        a->getType().getAsAggregateType()->numElements() == shape_op0[op].first
+      : a->getType().enforceIntType(shape_op0[op].second)) &&
+    (shape_op1[op].first != 1
+      ? b->getType().enforceVectorType(
+          [this](auto &ty) {return ty.enforceIntType(shape_op1[op].second);}) &&
+        b->getType().getAsAggregateType()->numElements() == shape_op1[op].first
+      : b->getType().enforceIntType(shape_op1[op].second)) &&
+    (shape_ret[op].first != 1
+      ? getType().enforceVectorType(
+          [this](auto &ty) {return ty.enforceIntType(shape_ret[op].second);}) &&
+        getType().getAsAggregateType()->numElements() == shape_ret[op].first
+      : getType().enforceIntType(shape_ret[op].second));
 }
 
 unique_ptr<Instr> X86IntrinBinOp::dup(const string &suffix) const {
