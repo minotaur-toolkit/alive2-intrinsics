@@ -3917,6 +3917,24 @@ void X86IntrinBinOp::print(ostream &os) const {
   case mmx_padd_d:
     str = "x86.mmx.padd.d ";
     break;
+  case mmx_punpckhbw:
+    str = "x86.mmx.punpckhbw ";
+    break;
+  case mmx_punpckhwd:
+    str = "x86.mmx.punpckhwd ";
+    break;
+  case mmx_punpckhdq:
+    str = "x86.mmx.punpckhdq ";
+    break;
+  case mmx_punpcklbw:
+    str = "x86.mmx.punpcklbw ";
+    break;
+  case mmx_punpcklwd:
+    str = "x86.mmx.punpcklwd ";
+    break;
+  case mmx_punpckldq:
+    str = "x86.mmx.punpckldq ";
+    break;
   }
   os << getName() << " = " << str << *a << ", " << *b;
 }
@@ -4019,6 +4037,35 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
                             true);
 
       vals.emplace_back(move(ai), move(pi));
+    }
+
+    return rty->aggregateVals(vals);
+  }
+  case mmx_punpckhbw:
+  case mmx_punpckhwd:
+  case mmx_punpckhdq:
+  case mmx_punpcklbw:
+  case mmx_punpcklwd:
+  case mmx_punpckldq:
+  {
+    vector<StateValue> vals;
+    unsigned laneCount, startVal, endVal;
+    switch (op) {
+    case mmx_punpckhbw: laneCount = 8; startVal = laneCount / 2; endVal = laneCount; break;
+    case mmx_punpckhwd: laneCount = 4; startVal = laneCount / 2; endVal = laneCount; break;
+    case mmx_punpckhdq: laneCount = 2; startVal = laneCount / 2; endVal = laneCount; break;
+    case mmx_punpcklbw: laneCount = 8; startVal = 0; endVal = laneCount / 2; break;
+    case mmx_punpcklwd: laneCount = 4; startVal = 0; endVal = laneCount / 2; break;
+    case mmx_punpckldq: laneCount = 2; startVal = 0; endVal = laneCount / 2; break;
+    default: UNREACHABLE();
+    }
+    //Starts at first lane of high half of both vectors
+    for (unsigned i = startVal; i != endVal; ++i) {
+      auto ai = aty->extract(av, i);
+      auto bi = bty->extract(bv, i);
+      
+      vals.emplace_back(move(ai));
+      vals.emplace_back(move(bi));
     }
 
     return rty->aggregateVals(vals);
