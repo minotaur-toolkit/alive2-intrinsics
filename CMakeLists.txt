@@ -19,7 +19,7 @@ if (MSVC)
   set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "/O2 /Oi /Zi ${CMAKE_CXX_FLAGS_RELWITHDEBINFO}")
   set(CMAKE_EXE_LINKER_FLAGS         "/LTCG:INCREMENTAL ${CMAKE_EXE_LINKER_FLAGS}")
 else()
-  set(CMAKE_CXX_FLAGS                "-Wall -Werror -march=native -fPIC ${CMAKE_CXX_FLAGS}")
+  set(CMAKE_CXX_FLAGS                "-Wall -Werror -march=native -mavx512f -mavx512bw -mavx512vl -fPIC -Wno-ignored-attributes ${CMAKE_CXX_FLAGS}")
   set(CMAKE_CXX_FLAGS_DEBUG          "-g -Og ${CMAKE_CXX_FLAGS_DEBUG}")
   set(CMAKE_CXX_FLAGS_RELEASE        "-O3 ${CMAKE_CXX_FLAGS_RELEASE}")
   set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELEASE} -g ${CMAKE_CXX_FLAGS_RELWITHDEBINFO}")
@@ -144,7 +144,13 @@ set(UTIL_SRCS
 add_library(util STATIC ${UTIL_SRCS})
 add_dependencies(util generate_version)
 
-set(ALIVE_LIBS ir smt tools util)
+set(DRIVER_SRCS
+  alivetv-driver/x86Intrin.cpp
+)
+
+add_library(driver STATIC ${DRIVER_SRCS})
+
+set(ALIVE_LIBS ir smt tools util driver)
 
 
 if (BUILD_LLVM_UTILS OR BUILD_TV)
@@ -182,6 +188,10 @@ if (BUILD_LLVM_UTILS OR BUILD_TV)
 
   add_llvm_executable(alive-exec
     "tools/alive-exec.cpp"
+  )
+
+  add_llvm_executable(alivetv-driver
+    "alivetv-driver/driver.cpp"
   )
 
 else()
@@ -229,6 +239,7 @@ if (BUILD_LLVM_UTILS OR BUILD_TV)
 #  target_link_libraries(alive2 PRIVATE ${llvm_libs})
   target_link_libraries(alive-tv PRIVATE ${ALIVE_LIBS_LLVM} ${llvm_libs})
   target_link_libraries(alive-exec PRIVATE ${ALIVE_LIBS_LLVM} ${llvm_libs})
+  target_link_libraries(alivetv-driver PRIVATE ${ALIVE_LIBS_LLVM} ${llvm_libs})
 endif()
 
 if (CYGWIN)
@@ -243,6 +254,7 @@ else()
   if (BUILD_LLVM_UTILS OR BUILD_TV)
     target_link_libraries(alive-tv PRIVATE ${Z3_LIBRARIES})
     target_link_libraries(alive-exec PRIVATE ${Z3_LIBRARIES})
+    target_link_libraries(alivetv-driver PRIVATE ${Z3_LIBRARIES})
   endif()
 endif()
 
