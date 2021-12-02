@@ -1,12 +1,24 @@
 #include "vectorutil.hpp"
 #include "x86Intrin.hpp"
 #include "randomizer.hpp"
+#include "irGenerator.hpp"
 
 __m128i src(__m128i a, __m128i b) {
 	return _mm_avg_epu16(a, b);
 }
 
 
+int main() {
+	//Int32ExprAST testval(32);
+	//PrototypeAST testproto("testFunction", std::vector<std::string>({"output", "i1", "i2"}));
+	//FunctionAST function(std::unique_ptr<PrototypeAST>(testproto), std::unique_ptr<ExprAST>(testval));
+	std::unique_ptr<Int32ExprAST> expr = std::make_unique<Int32ExprAST>(32);
+	std::unique_ptr<PrototypeAST> proto = std::make_unique<PrototypeAST>("testFunction", std::vector<std::string>({"output", "i1", "i2"}));
+	FunctionAST function(proto, expr);
+	function.codegen();
+}
+
+/*
 int main()
 {		
 	//This variable below is the only variable that needs to be manually changed in main
@@ -69,3 +81,4 @@ int main()
 
 	return 0;
 }
+*/
