@@ -8,6 +8,7 @@
 
 #include <string>
 #include <vector>
+#include <iostream>
 
 using namespace llvm;
 
@@ -108,7 +109,7 @@ Function* FunctionAST::codegen() {
 
   if (!TheFunction)
     return nullptr;
-
+  
   BasicBlock* BB = BasicBlock::Create(*TheContext, "entry", TheFunction);
   Builder->SetInsertPoint(BB);
 
@@ -132,5 +133,19 @@ Function* FunctionAST::codegen() {
   return nullptr;
 }
 
+
+
+//===----------------------------------------------------------------------===//
+// Initialize LLVM objects
+//===----------------------------------------------------------------------===//
+
+static void InitializeModule() {
+  // Open a new context and module.
+  TheContext = std::make_unique<LLVMContext>();
+  TheModule = std::make_unique<Module>("my cool jit", *TheContext);
+
+  // Create a new builder for the module.
+  Builder = std::make_unique<IRBuilder<>>(*TheContext);
+}
 
 #endif

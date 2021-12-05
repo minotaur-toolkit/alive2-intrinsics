@@ -12,10 +12,16 @@ int main() {
 	//Int32ExprAST testval(32);
 	//PrototypeAST testproto("testFunction", std::vector<std::string>({"output", "i1", "i2"}));
 	//FunctionAST function(std::unique_ptr<PrototypeAST>(testproto), std::unique_ptr<ExprAST>(testval));
+	InitializeModule();
+	
 	std::unique_ptr<Int32ExprAST> expr = std::make_unique<Int32ExprAST>(32);
-	std::unique_ptr<PrototypeAST> proto = std::make_unique<PrototypeAST>("testFunction", std::vector<std::string>({"output", "i1", "i2"}));
-	FunctionAST function(proto, expr);
+	std::unique_ptr<PrototypeAST> proto = std::make_unique<PrototypeAST>("testFunction", std::vector<std::string>({"i1"}));
+	proto->codegen();
+	std::cout << "1" << std::endl;
+	FunctionAST function(std::move(proto), std::move(expr));
+	std::cout << "1" << std::endl;
 	function.codegen();
+	std::cout << "1" << std::endl;
 }
 
 /*
