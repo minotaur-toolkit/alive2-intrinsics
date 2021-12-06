@@ -146,6 +146,7 @@ add_dependencies(util generate_version)
 
 set(DRIVER_SRCS
   alivetv-driver/x86Intrin.cpp
+  alivetv-driver/compareFunctions.cpp
 )
 
 add_library(driver STATIC ${DRIVER_SRCS})
