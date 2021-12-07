@@ -15,6 +15,15 @@ using namespace llvm;
 #ifndef IRGENERATOR_H
 #define IRGENERATOR_H
 //===----------------------------------------------------------------------===//
+// Define easier to type IR types
+//===----------------------------------------------------------------------===//
+
+IntegerType* IRint8_t;
+IntegerType* IRint16_t;
+IntegerType* IRint32_t;
+IntegerType* IRint64_t;
+
+//===----------------------------------------------------------------------===//
 // Abstract Syntax Tree (aka Parse Tree)
 //===----------------------------------------------------------------------===//
 
@@ -30,26 +39,51 @@ public:
 
 
 // Int32ExprAST - Expression class for int32 literals
-class Int32ExprAST : public ExprAST {
-  int32_t val;
+class IntExprAST : public ExprAST {
+  uint64_t val;
+  IntegerType* type;
 
 public:
-  Int32ExprAST(int32_t input) : val(input) {}
+  IntExprAST(uint64_t input, IntegerType* iType) : val(input), type(iType) {}
 
   Value* codegen() override;
 };
 
+// VectorExprAST - Expression class for vectors of integer type
+class VectorExprAST : public ExprAST {
+  std::vector<std::unique_ptr<ExprAST>> Vals;
+
+public:
+  VectorExprAST(std::vector<std::unique_ptr<ExprAST>> iVals)
+	  : Vals(std::move(iVals)) {}
+
+  Value* codegen() override;
+};
+
+// CallExprAST - Expression class for function calls.
+class CallExprAST : public ExprAST {
+  std::string Callee;
+  std::vector<std::unique_ptr<ExprAST>> Args;
+
+public:
+  CallExprAST(const std::string &Callee,
+              std::vector<std::unique_ptr<ExprAST>> Args)
+      : Callee(Callee), Args(std::move(Args)) {}
+
+  Value* codegen() override;
+};
 
 // PrototypeAST - This class represents the "prototype" for a function,
-// which captures its name, and its argument names (thus implicitly the number
+// which captures its name, and its argument types (thus implicitly the number
 // of arguments the function takes).
 class PrototypeAST {
   std::string Name;
-  std::vector<std::string> Args;
+  Type* RetType;
+  std::vector<Type*> ArgTypes;
 
 public:
-  PrototypeAST(const std::string& name, std::vector<std::string> args)
-	  : Name(name), Args(std::move(args)) {}
+  PrototypeAST(const std::string& name, Type* retType, std::vector<Type*> args)
+	  : Name(name), RetType(retType), ArgTypes(std::move(args)) {}
 
   Function* codegen();
   const std::string& getName() const { return Name; }
@@ -79,22 +113,47 @@ static std::unique_ptr<IRBuilder<>> Builder;
 static std::map<std::string, Value *> NamedValues;
 
 //Constructs a 32 bit signed integer
-Value* Int32ExprAST::codegen() {
-  return ConstantInt::get(*TheContext, APInt(32, static_cast<uint64_t>(val), true));
+Value* IntExprAST::codegen() {
+  return ConstantInt::get(type, val);
+}
+
+Value* VectorExprAST::codegen() {
+  return nullptr;
+}
+
+Value* CallExprAST::codegen() {
+  // Look up the name in the global module table.
+  Function *CalleeF = TheModule->getFunction(Callee);
+  if (!CalleeF) {
+    std::cerr << "Unknown function referenced" << std::endl;
+    throw std::invalid_argument("Unknown function referenced");
+  }
+  // If argument mismatch error.
+  if (CalleeF->arg_size() != Args.size()) {
+    std::cerr << "Incorrect # arguments passed" << std::endl;
+    throw std::invalid_argument("Incorrect # arguments passed");
+  }
+  std::vector<Value *> ArgsV;
+  for (unsigned i = 0, e = Args.size(); i != e; ++i) {
+    ArgsV.push_back(Args[i]->codegen());
+    if (!ArgsV.back())
+      return nullptr;
+  }
+
+  return Builder->CreateCall(CalleeF, ArgsV, "calltmp");
 }
 
 Function* PrototypeAST::codegen() {
-  // Make the function type: int(int, int, ...) etc.
-  std::vector<Type*> Ints(Args.size(), Type::getInt32Ty(*TheContext));
   
-  FunctionType* FT = FunctionType::get(Type::getInt32Ty(*TheContext), Ints, false);
+  FunctionType* FT = FunctionType::get(RetType, ArgTypes, false);
 
   Function* F = Function::Create(FT, Function::ExternalLinkage, Name, TheModule.get());
 
   // Set names for all arguments.
+  std::string inputChar = "i";
   unsigned Idx = 0;
   for (auto &Arg : F->args())
-	  Arg.setName(Args[Idx++]);
+	  Arg.setName(inputChar + std::to_string(Idx++));
 
   return F;
 }
@@ -146,6 +205,14 @@ static void InitializeModule() {
 
   // Create a new builder for the module.
   Builder = std::make_unique<IRBuilder<>>(*TheContext);
+
+
+  IRint8_t = Type::getInt8Ty(*TheContext);
+  IRint16_t = Type::getInt16Ty(*TheContext);
+  IRint32_t = Type::getInt32Ty(*TheContext);
+  IRint64_t = Type::getInt64Ty(*TheContext);
 }
+
+
 
 #endif

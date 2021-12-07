@@ -12,15 +12,15 @@ __m128i src(__m128i a, __m128i b) {
 
 int main() {
 	InitializeModule();
-	
-	std::unique_ptr<Int32ExprAST> expr = std::make_unique<Int32ExprAST>(32);
-	std::unique_ptr<PrototypeAST> proto = std::make_unique<PrototypeAST>("src", std::vector<std::string>({"i1"}));
+
+	std::unique_ptr<IntExprAST> expr = std::make_unique<IntExprAST>(32, IRint32_t);
+	std::unique_ptr<PrototypeAST> proto = std::make_unique<PrototypeAST>("src", IRint32_t, std::vector<Type*>({IRint32_t}));
 	
 	FunctionAST function(std::move(proto), std::move(expr));
 	llvm::Function* func1 = function.codegen();
 
-	expr = std::make_unique<Int32ExprAST>(32);
-	proto = std::make_unique<PrototypeAST>("tgt", std::vector<std::string>({"i1"}));
+	expr = std::make_unique<IntExprAST>(32, IRint32_t);
+	proto = std::make_unique<PrototypeAST>("tgt", IRint32_t, std::vector<Type*>({IRint32_t}));
 
 	FunctionAST function2(std::move(proto), std::move(expr));
 	llvm::Function* func2 = function2.codegen();
