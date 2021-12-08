@@ -50,13 +50,14 @@ public:
 };
 
 // VectorExprAST - Expression class for vectors of integer type
+// Value and size of vector depends on size of input vector
 class IntVectorExprAST : public ExprAST {
-  Type* ElementType;
+  IntegerType* ElementType;
   std::vector<std::unique_ptr<IntExprAST>> Vals;
   //Vals vector could have different width integers, could lead to issues
 
 public:
-  IntVectorExprAST(Type* elementType, 
+  IntVectorExprAST(IntegerType* elementType, 
 		   std::vector<std::unique_ptr<IntExprAST>> iVals)
 	  : ElementType(elementType), 
 	  Vals(std::move(iVals)) {}
@@ -116,21 +117,22 @@ static std::unique_ptr<Module> TheModule;
 static std::unique_ptr<IRBuilder<>> Builder;
 static std::map<std::string, Value *> NamedValues;
 
-//Constructs a 32 bit signed integer
+// Constructs a 32 bit signed integer
 Value* IntExprAST::codegen() {
   return ConstantInt::get(type, val);
 }
 
+// Constructs a constant vector out of input arguments
 Value* IntVectorExprAST::codegen() {
-  VectorType* vecType = VectorType::get(ElementType, Vals.size(), false);
-  Value* emptyVec = UndefValue::get(vecType);
-//  for(int i = 0; i < Vals.size(); ++i) {V
-    Constant* index =  Constant::getIntegerValue(ElementType, llvm::APInt(32, 0));
-    Value *fullVector = InsertElementInst::Create(emptyVec, Vals[0]->codegen(), index);
-//  }
-  return fullVector;
+  std::vector<Constant*> v;
+  for(unsigned i = 0, e = Vals.size(); i != e; ++i)
+  {
+    v.push_back(static_cast<ConstantInt*>(Vals[i]->codegen()));
+  }
+  return ConstantVector::get(v);
 }
 
+// Constructs a function call
 Value* CallExprAST::codegen() {
   // Look up the name in the global module table.
   Function *CalleeF = TheModule->getFunction(Callee);
@@ -153,6 +155,7 @@ Value* CallExprAST::codegen() {
   return Builder->CreateCall(CalleeF, ArgsV, "calltmp");
 }
 
+// Constructs the prototype for a function
 Function* PrototypeAST::codegen() {
   
   FunctionType* FT = FunctionType::get(RetType, ArgTypes, false);
@@ -168,7 +171,7 @@ Function* PrototypeAST::codegen() {
   return F;
 }
 
-
+// Constructs the body of a function
 Function* FunctionAST::codegen() {
   // Check for existing function from a previous "extern" declaration
   Function* TheFunction = TheModule->getFunction(Proto->getName());  
