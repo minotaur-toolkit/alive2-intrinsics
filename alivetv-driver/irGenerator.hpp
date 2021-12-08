@@ -38,7 +38,7 @@ public:
 };
 
 
-// Int32ExprAST - Expression class for int32 literals
+// IntExprAST - Expression class for integer literals
 class IntExprAST : public ExprAST {
   uint64_t val;
   IntegerType* type;
@@ -50,12 +50,16 @@ public:
 };
 
 // VectorExprAST - Expression class for vectors of integer type
-class VectorExprAST : public ExprAST {
-  std::vector<std::unique_ptr<ExprAST>> Vals;
+class IntVectorExprAST : public ExprAST {
+  Type* ElementType;
+  std::vector<std::unique_ptr<IntExprAST>> Vals;
+  //Vals vector could have different width integers, could lead to issues
 
 public:
-  VectorExprAST(std::vector<std::unique_ptr<ExprAST>> iVals)
-	  : Vals(std::move(iVals)) {}
+  IntVectorExprAST(Type* elementType, 
+		   std::vector<std::unique_ptr<IntExprAST>> iVals)
+	  : ElementType(elementType), 
+	  Vals(std::move(iVals)) {}
 
   Value* codegen() override;
 };
@@ -117,8 +121,14 @@ Value* IntExprAST::codegen() {
   return ConstantInt::get(type, val);
 }
 
-Value* VectorExprAST::codegen() {
-  return nullptr;
+Value* IntVectorExprAST::codegen() {
+  VectorType* vecType = VectorType::get(ElementType, Vals.size(), false);
+  Value* emptyVec = UndefValue::get(vecType);
+//  for(int i = 0; i < Vals.size(); ++i) {V
+    Constant* index =  Constant::getIntegerValue(ElementType, llvm::APInt(32, 0));
+    Value *fullVector = InsertElementInst::Create(emptyVec, Vals[0]->codegen(), index);
+//  }
+  return fullVector;
 }
 
 Value* CallExprAST::codegen() {

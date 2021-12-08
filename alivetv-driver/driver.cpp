@@ -24,8 +24,28 @@ int main() {
 
 	FunctionAST function2(std::move(proto), std::move(expr));
 	llvm::Function* func2 = function2.codegen();
+	
 
-	//TheModule->print(errs(), nullptr);
+	std::vector<std::unique_ptr<IntExprAST>> valVec;
+	expr = std::make_unique<IntExprAST>(32, IRint32_t);
+	valVec.push_back(std::move(expr));
+	expr = std::make_unique<IntExprAST>(33, IRint32_t);
+	valVec.push_back(std::move(expr));
+	expr = std::make_unique<IntExprAST>(34, IRint32_t);
+	valVec.push_back(std::move(expr));
+	expr = std::make_unique<IntExprAST>(35, IRint32_t);
+	valVec.push_back(std::move(expr));
+
+
+	std::unique_ptr<IntVectorExprAST> vecExpr = 
+	std::make_unique<IntVectorExprAST>(IRint32_t, std::move(valVec)); 
+
+	proto = std::make_unique<PrototypeAST>("vec", VectorType::get(IRint32_t, 4, false), std::vector<Type*>({}));
+
+	FunctionAST function3(std::move(proto), std::move(vecExpr));
+	llvm::Function* func3 = function3.codegen();
+
+	TheModule->print(errs(), nullptr);
 	
 	if(report_dir_created);	//Error about unsused variable, TODO: fix
 	
@@ -36,6 +56,7 @@ int main() {
 	smt_init.emplace();
 
 	compareFunctions(*func1, *func2, TLI);
+	compareFunctions(*func1, *func3, TLI);
 }
 
 /*
