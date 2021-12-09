@@ -6,6 +6,8 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 
+#include <llvm/IR/IntrinsicsX86.h>
+
 #include <string>
 #include <vector>
 #include <iostream>
@@ -78,6 +80,7 @@ public:
   Value* codegen() override;
 };
 
+
 // PrototypeAST - This class represents the "prototype" for a function,
 // which captures its name, and its argument types (thus implicitly the number
 // of arguments the function takes).
@@ -134,6 +137,8 @@ Value* IntVectorExprAST::codegen() {
 
 // Constructs a function call
 Value* CallExprAST::codegen() {
+  //TODO: Add a check that compares if arguments have the correct types
+	
   // Look up the name in the global module table.
   Function *CalleeF = TheModule->getFunction(Callee);
   if (!CalleeF) {
@@ -151,7 +156,6 @@ Value* CallExprAST::codegen() {
     if (!ArgsV.back())
       return nullptr;
   }
-
   return Builder->CreateCall(CalleeF, ArgsV, "calltmp");
 }
 

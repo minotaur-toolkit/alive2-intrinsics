@@ -12,20 +12,36 @@ __m128i src(__m128i a, __m128i b) {
 
 int main() {
 	InitializeModule();
+	
+	/*
+	 * Code tests four things. Creates four functions.
+	 * First function @src takes one i32 input and always returns i32 32
+	 * Second function @tgt is defined the same as the first function
+	 * Third function @vec takes no arguments and returns <4 x i32> with 32 i32 values
+	 * Then, code declares an x86 intrinsic
+	 * The final function @call takes no arguments, and returns a call to the intrinsic with constant values
+	 */
 
+
+	//Start function 1
 	std::unique_ptr<IntExprAST> expr = std::make_unique<IntExprAST>(32, IRint32_t);
 	std::unique_ptr<PrototypeAST> proto = std::make_unique<PrototypeAST>("src", IRint32_t, std::vector<Type*>({IRint32_t}));
 	
 	FunctionAST function(std::move(proto), std::move(expr));
 	llvm::Function* func1 = function.codegen();
+	//End function 1
 
+
+	//Start function 2
 	expr = std::make_unique<IntExprAST>(32, IRint32_t);
 	proto = std::make_unique<PrototypeAST>("tgt", IRint32_t, std::vector<Type*>({IRint32_t}));
 
 	FunctionAST function2(std::move(proto), std::move(expr));
 	llvm::Function* func2 = function2.codegen();
-	
+	//End function 2
 
+
+	//Start function 3
 	std::vector<std::unique_ptr<IntExprAST>> valVec;
 	expr = std::make_unique<IntExprAST>(32, IRint32_t);
 	valVec.push_back(std::move(expr));
@@ -44,19 +60,64 @@ int main() {
 
 	FunctionAST function3(std::move(proto), std::move(vecExpr));
 	llvm::Function* func3 = function3.codegen();
+	//End function 3
 
+	//Declare the intrinsic to be used
+	llvm::Intrinsic::getDeclaration(TheModule.get(), llvm::Intrinsic::x86_sse2_psrl_d);
+
+	//Start function 4
+	//Create one of the operands for the call, store in vecExpr
+	valVec.clear();
+	for(int i = 0; i < 4; ++i) {
+	  expr = std::make_unique<IntExprAST>(32, IRint32_t);
+	  valVec.push_back(std::move(expr));
+	}
+	vecExpr = std::make_unique<IntVectorExprAST>(IRint32_t, std::move(valVec));	
+	
+	//Create the second set of operands for the call, store in vecExpr2
+	valVec.clear();
+	for(int i = 0; i < 4; ++i) {
+	  expr = std::make_unique<IntExprAST>(32, IRint32_t);
+	  valVec.push_back(std::move(expr));
+	}	
+	std::unique_ptr<IntVectorExprAST> vecExpr2 = 
+	std::make_unique<IntVectorExprAST>(IRint32_t, std::move(valVec)); 
+	
+	//Create the vector callVec that contains the operands for the call
+	std::vector<std::unique_ptr<ExprAST>> callVec;
+	callVec.push_back(std::move(vecExpr));
+	callVec.push_back(std::move(vecExpr2));	
+	
+	//Create the actual call instruction using the operands created above
+	std::unique_ptr<CallExprAST> callExpr = 
+	std::make_unique<CallExprAST>("llvm.x86.sse2.psrl.d", std::move(callVec));
+	
+	//Create the prototype
+	proto = std::make_unique<PrototypeAST>("call", VectorType::get(IRint32_t, 4, false), std::vector<Type*>({}));
+
+	//Combine the prototype and the call
+	FunctionAST function4(std::move(proto), std::move(callExpr));
+	llvm::Function* func4 = function4.codegen();
+	//End function 4
+	
+
+
+	//Print the module to see the LLVM IR currently created
 	TheModule->print(errs(), nullptr);
 	
 	if(report_dir_created);	//Error about unsused variable, TODO: fix
 	
+	//Set up TLI for Alive2
 	llvm::Triple targetTriple(TheModule.get()->getTargetTriple());
 	llvm::TargetLibraryInfoWrapperPass TLI(targetTriple);
 	
+	//Set up output stream for Alive2 info, then set up smt
 	out = &std::cout;
 	smt_init.emplace();
 
+	//Compare functions
 	compareFunctions(*func1, *func2, TLI);
-	compareFunctions(*func1, *func3, TLI);
+	compareFunctions(*func3, *func4, TLI);
 }
 
 /*
