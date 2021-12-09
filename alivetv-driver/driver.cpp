@@ -2,6 +2,7 @@
 #include "x86Intrin.hpp"
 #include "randomizer.hpp"
 #include "irGenerator.hpp"
+#include "irWrapper.hpp"
 
 #include "compareFunctions.cpp"
 
@@ -42,24 +43,10 @@ int main() {
 
 
 	//Start function 3
-	std::vector<std::unique_ptr<IntExprAST>> valVec;
-	expr = std::make_unique<IntExprAST>(32, IRint32_t);
-	valVec.push_back(std::move(expr));
-	expr = std::make_unique<IntExprAST>(33, IRint32_t);
-	valVec.push_back(std::move(expr));
-	expr = std::make_unique<IntExprAST>(34, IRint32_t);
-	valVec.push_back(std::move(expr));
-	expr = std::make_unique<IntExprAST>(35, IRint32_t);
-	valVec.push_back(std::move(expr));
+	__m128i vals = vectorRandomizer<32>(vals);
+	
+	llvm::Function* func3 = generateReturnFunction<32>(vals, "vec");
 
-
-	std::unique_ptr<IntVectorExprAST> vecExpr = 
-	std::make_unique<IntVectorExprAST>(IRint32_t, std::move(valVec)); 
-
-	proto = std::make_unique<PrototypeAST>("vec", VectorType::get(IRint32_t, 4, false), std::vector<Type*>({}));
-
-	FunctionAST function3(std::move(proto), std::move(vecExpr));
-	llvm::Function* func3 = function3.codegen();
 	//End function 3
 
 	//Declare the intrinsic to be used
@@ -67,12 +54,14 @@ int main() {
 
 	//Start function 4
 	//Create one of the operands for the call, store in vecExpr
+	std::vector<std::unique_ptr<IntExprAST>> valVec;
 	valVec.clear();
 	for(int i = 0; i < 4; ++i) {
 	  expr = std::make_unique<IntExprAST>(32, IRint32_t);
 	  valVec.push_back(std::move(expr));
 	}
-	vecExpr = std::make_unique<IntVectorExprAST>(IRint32_t, std::move(valVec));	
+	std::unique_ptr<IntVectorExprAST> vecExpr = 
+	std::make_unique<IntVectorExprAST>(IRint32_t, std::move(valVec));	
 	
 	//Create the second set of operands for the call, store in vecExpr2
 	valVec.clear();
