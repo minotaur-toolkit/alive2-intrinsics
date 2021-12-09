@@ -50,43 +50,14 @@ int main() {
 	//End function 3
 
 	//Declare the intrinsic to be used
-	llvm::Intrinsic::getDeclaration(TheModule.get(), llvm::Intrinsic::x86_sse2_psrl_d);
+	llvm::Function* intrinsicFunction = llvm::Intrinsic::getDeclaration(TheModule.get(), llvm::Intrinsic::x86_sse2_psrl_d);
 
 	//Start function 4
-	//Create one of the operands for the call, store in vecExpr
-	std::vector<std::unique_ptr<IntExprAST>> valVec;
-	valVec.clear();
-	for(int i = 0; i < 4; ++i) {
-	  expr = std::make_unique<IntExprAST>(32, IRint32_t);
-	  valVec.push_back(std::move(expr));
-	}
-	std::unique_ptr<IntVectorExprAST> vecExpr = 
-	std::make_unique<IntVectorExprAST>(IRint32_t, std::move(valVec));	
-	
-	//Create the second set of operands for the call, store in vecExpr2
-	valVec.clear();
-	for(int i = 0; i < 4; ++i) {
-	  expr = std::make_unique<IntExprAST>(32, IRint32_t);
-	  valVec.push_back(std::move(expr));
-	}	
-	std::unique_ptr<IntVectorExprAST> vecExpr2 = 
-	std::make_unique<IntVectorExprAST>(IRint32_t, std::move(valVec)); 
-	
-	//Create the vector callVec that contains the operands for the call
-	std::vector<std::unique_ptr<ExprAST>> callVec;
-	callVec.push_back(std::move(vecExpr));
-	callVec.push_back(std::move(vecExpr2));	
-	
-	//Create the actual call instruction using the operands created above
-	std::unique_ptr<CallExprAST> callExpr = 
-	std::make_unique<CallExprAST>("llvm.x86.sse2.psrl.d", std::move(callVec));
-	
-	//Create the prototype
-	proto = std::make_unique<PrototypeAST>("call", VectorType::get(IRint32_t, 4, false), std::vector<Type*>({}));
+	__m128i vals2 = vectorRandomizer<32>(vals);
+	__m128i vals3 = vectorRandomizer<32>(vals);
 
-	//Combine the prototype and the call
-	FunctionAST function4(std::move(proto), std::move(callExpr));
-	llvm::Function* func4 = function4.codegen();
+	llvm::Function* func4 = generateCallFunction<32, 32>(vals2, vals3, intrinsicFunction, "call");
+	
 	//End function 4
 	
 

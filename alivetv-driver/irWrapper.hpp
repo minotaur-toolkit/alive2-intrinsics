@@ -67,4 +67,25 @@ Function* generateReturnFunction(type input, std::string name) {
 	return func->codegen();
 }
 
+template<unsigned bitwidthOp1, unsigned bitwidthOp2, typename typeOp1, typename typeOp2>
+Function* generateCallFunction(typeOp1 input1, typeOp2 input2, Function* func, std::string name) {
+	std::unique_ptr<IntVectorExprAST> vecExprOp1 = generateVector<bitwidthOp1>(input1);
+	std::unique_ptr<IntVectorExprAST> vecExprOp2 = generateVector<bitwidthOp2>(input2);
+	
+	std::vector<std::unique_ptr<ExprAST>> callVec;
+	callVec.push_back(std::move(vecExprOp1));
+	callVec.push_back(std::move(vecExprOp2));
+
+	std::unique_ptr<CallExprAST> callExpr =
+	std::make_unique<CallExprAST>(func, std::move(callVec));
+
+	std::unique_ptr<PrototypeAST> proto = 
+	std::make_unique<PrototypeAST>(name, func->getReturnType(), std::vector<Type*>({}));
+
+	std::unique_ptr<FunctionAST> returnFunction =
+	std::make_unique<FunctionAST>(std::move(proto), std::move(callExpr));
+
+	return returnFunction->codegen();
+}
+
 #endif

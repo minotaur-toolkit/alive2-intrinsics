@@ -69,13 +69,17 @@ public:
 
 // CallExprAST - Expression class for function calls.
 class CallExprAST : public ExprAST {
-  std::string Callee;
+  std::string Callee = "";
+  Function* CalleeF;
   std::vector<std::unique_ptr<ExprAST>> Args;
-
 public:
   CallExprAST(const std::string &Callee,
               std::vector<std::unique_ptr<ExprAST>> Args)
       : Callee(Callee), Args(std::move(Args)) {}
+
+  CallExprAST(Function* func, 
+	      std::vector<std::unique_ptr<ExprAST>> Args)
+      : CalleeF(func), Args(std::move(Args)) {}
 
   Value* codegen() override;
 };
@@ -140,16 +144,20 @@ Value* CallExprAST::codegen() {
   //TODO: Add a check that compares if arguments have the correct types
 	
   // Look up the name in the global module table.
-  Function *CalleeF = TheModule->getFunction(Callee);
-  if (!CalleeF) {
-    std::cerr << "Unknown function referenced" << std::endl;
-    throw std::invalid_argument("Unknown function referenced");
+  // If the function is not directly provided
+  if(Callee != "") {
+    CalleeF = TheModule->getFunction(Callee);
+    if (!CalleeF) {
+      std::cerr << "Unknown function referenced" << std::endl;
+      throw std::invalid_argument("Unknown function referenced");
+    }
   }
   // If argument mismatch error.
   if (CalleeF->arg_size() != Args.size()) {
     std::cerr << "Incorrect # arguments passed" << std::endl;
     throw std::invalid_argument("Incorrect # arguments passed");
   }
+
   std::vector<Value *> ArgsV;
   for (unsigned i = 0, e = Args.size(); i != e; ++i) {
     ArgsV.push_back(Args[i]->codegen());
