@@ -4484,13 +4484,13 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
     switch (op) {
     case avx2_pavg_b:
       fn = [&](auto a, auto b) -> expr {
-        return (a + b + expr::mkUInt(1, 8)).lshr(expr::mkUInt(1, 8));
+        return (a.zext(1) + b.zext(1) + expr::mkUInt(1, 9)).lshr(expr::mkUInt(1, 9)).trunc(8);
       };
       break;
     case sse2_pavg_w:
     case avx2_pavg_w:
       fn = [&](auto a, auto b) -> expr {
-        return (a + b + expr::mkUInt(1, 16)).lshr(expr::mkUInt(1, 16));
+        return (a.zext(1) + b.zext(1) + expr::mkUInt(1, 17)).lshr(expr::mkUInt(1, 17)).trunc(16);
       };
       break;
     case mmx_padd_b:
