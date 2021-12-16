@@ -3,8 +3,12 @@
 #include "randomizer.hpp"
 #include "irGenerator.hpp"
 #include "irWrapper.hpp"
+#include "JIT.hpp"
 
 #include "compareFunctions.cpp"
+
+
+#include "llvm/Support/TargetSelect.h"
 
 /*
 int main() {
@@ -87,6 +91,18 @@ int main()
 	//Initialize llvm module
 	InitializeModule();
 	
+	llvm::InitializeNativeTarget();
+
+	//Initialize Just In Time Compiler
+	auto JITInit = llvm::orc::JIT::Create();
+	
+	//Below executes if initializing JIT failed
+	if (auto E = JITInit.takeError()) {
+	  errs() << "Problem with JIT " << toString(std::move(E)) << "\n";
+	  return -1;
+	}
+	std::unique_ptr<llvm::orc::JIT> JITCompiler = std::move(*JITInit);
+	
 	//Initialize Alive2
 	llvm::Triple targetTriple(TheModule.get()->getTargetTriple());
 	llvm::TargetLibraryInfoWrapperPass TLI(targetTriple);
@@ -100,7 +116,7 @@ int main()
 	//(with the exception of the ranges on vectorRandomizer in the for loop)
 	constexpr X86IntrinBinOp::Op op = X86IntrinBinOp::sse2_pavg_w;
 	
-	constexpr unsigned timesToLoop = 10000;	
+	constexpr unsigned timesToLoop = 1;	
 
 	//Bitsize is the number of bits in the entire vector
 	constexpr unsigned op0BitSize = bitSizeOp0<op>();
