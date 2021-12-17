@@ -17,7 +17,7 @@ using namespace llvm;
 #ifndef IRGENERATOR_H
 #define IRGENERATOR_H
 //===----------------------------------------------------------------------===//
-// Define easier to type IR types
+// Declare easier to type IR types
 //===----------------------------------------------------------------------===//
 
 IntegerType* IRint8_t;
@@ -119,10 +119,20 @@ public:
 // Code Generation
 //===----------------------------------------------------------------------===//
 
+// TheContext below is what will be used for all IR generation
 static std::unique_ptr<LLVMContext> TheContext;
 static std::unique_ptr<Module> TheModule;
 static std::unique_ptr<IRBuilder<>> Builder;
 static std::map<std::string, Value *> NamedValues;
+
+// Now declares intrisinc context and module, which will hold IR for intrinsics to be used with JIT
+static std::unique_ptr<LLVMContext> IntrinsicContext;
+static std::unique_ptr<Module> IntrinsicModule;
+static std::unique_ptr<IRBuilder<>> IntrinsicBuilder;
+// Then declares the alive context and module, which will hold the src and tgt functions
+static std::unique_ptr<LLVMContext> AliveContext;
+static std::unique_ptr<Module> AliveModule;
+static std::unique_ptr<IRBuilder<>> AliveBuilder;
 
 // Constructs a 32 bit signed integer
 Value* IntExprAST::codegen() {
@@ -224,13 +234,24 @@ Function* FunctionAST::codegen() {
 //===----------------------------------------------------------------------===//
 
 static void InitializeModule() {
-  // Open a new context and module.
-  TheContext = std::make_unique<LLVMContext>();
-  TheModule = std::make_unique<Module>("Driver Module", *TheContext);
+  // Now opens context for intrinsic functions
+  IntrinsicContext = std::make_unique<LLVMContext>();
+  IntrinsicModule = std::make_unique<Module>("Intrinsic Module", *IntrinsicContext);
+  
+  // Now opens a context for alive functions
+  AliveContext = std::make_unique<LLVMContext>();
+  AliveModule = std::make_unique<Module>("Alive Module", *AliveContext);
+  
+  // Create builders for both modules
+  IntrinsicBuilder = std::make_unique<IRBuilder<>>(*IntrinsicContext);
+  AliveBuilder = std::make_unique<IRBuilder<>>(*AliveContext);
 
-  // Create a new builder for the module.
-  Builder = std::make_unique<IRBuilder<>>(*TheContext);
+  // Create named values for both modules
 
+  // Finally define TheContext, setting to IntrinsicContext to begin with
+  TheContext = std::move(IntrinsicContext);
+  TheModule = std::move(IntrinsicModule);
+  Builder = std::move(IntrinsicBuilder);
 
   IRint8_t = Type::getInt8Ty(*TheContext);
   IRint16_t = Type::getInt16Ty(*TheContext);
@@ -238,6 +259,23 @@ static void InitializeModule() {
   IRint64_t = Type::getInt64Ty(*TheContext);
 }
 
+// After finishing intrinsic context, call this function
+// Didn't change NamedValues, could cause issues
+// Functions don't check to see if switching is actually valid
+static void switchToAliveContext() {
+  IntrinsicContext = std::move(TheContext);
+  IntrinsicModule = std::move(TheModule);
+  IntrinsicBuilder = std::move(Builder);
+	
+  TheContext = std::move(AliveContext);
+  TheModule = std::move(AliveModule);
+  Builder = std::move(AliveBuilder);
+  
+  IRint8_t = Type::getInt8Ty(*TheContext);
+  IRint16_t = Type::getInt16Ty(*TheContext);
+  IRint32_t = Type::getInt32Ty(*TheContext);
+  IRint64_t = Type::getInt64Ty(*TheContext);
 
-
+  NamedValues.clear();
+}
 #endif

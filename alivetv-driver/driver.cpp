@@ -88,14 +88,16 @@ int main() {
 
 int main()
 {		
-	//Initialize llvm module
+	//Initialize llvm module and intrinsic module
 	InitializeModule();
-	
+
+	//Initialize native target information for Just In Time Compiler	
 	llvm::InitializeNativeTarget();
+	llvm::InitializeNativeTargetAsmPrinter();
 
 	//Initialize Just In Time Compiler
 	auto JITInit = llvm::orc::JIT::Create();
-	
+
 	//Below executes if initializing JIT failed
 	if (auto E = JITInit.takeError()) {
 	  errs() << "Problem with JIT " << toString(std::move(E)) << "\n";
@@ -103,6 +105,43 @@ int main()
 	}
 	std::unique_ptr<llvm::orc::JIT> JITCompiler = std::move(*JITInit);
 	
+	//Set data layout of module
+	TheModule->setDataLayout(JITCompiler->getDataLayout());
+
+	//TESTING BELOW	
+	llvm::Function* testFunc = llvm::Intrinsic::getDeclaration(TheModule.get(), llvm::Intrinsic::x86_sse2_pavg_w);
+	__m128i valsTest = vectorRandomizer<16>(valsTest);
+	__m128i valsTest2 = vectorRandomizer<16, 40>(valsTest2);
+	
+	generateCallFunction<16, 16>(valsTest, valsTest2, testFunc, "test");
+
+	TheModule->print(errs(), nullptr);
+	
+	//Add intrinsic module to JIT
+	auto JITadd = JITCompiler->addModule(llvm::orc::ThreadSafeModule(std::move(TheModule), std::move(TheContext)));
+	
+	//Check if adding module to JIT errored
+	if(JITadd) {
+ 	  errs() << "Problem adding module to JIT " << JITadd << "\n";
+	}
+	auto funcLookup = JITCompiler->lookup("test");
+
+	//Below executes if looking up JIT function failed
+	if (auto E = funcLookup.takeError()) {
+	  errs() << "Problem with JIT lookup " << toString(std::move(E)) << "\n";
+	  return -1;
+	}
+
+	auto* funcPointer = (__m128i(*)())funcLookup->getAddress();
+	
+	printVec<16>(valsTest);
+	printVec<16>(valsTest2);
+	
+	__m128i valsRetTest = funcPointer();
+	printVec<16>(valsRetTest);
+	
+	switchToAliveContext();
+
 	//Initialize Alive2
 	llvm::Triple targetTriple(TheModule.get()->getTargetTriple());
 	llvm::TargetLibraryInfoWrapperPass TLI(targetTriple);
