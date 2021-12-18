@@ -135,12 +135,12 @@ int main()
 	  return -1;
 	}
 
-	auto* funcPointer = (__m128i(*)())funcLookup->getAddress();
+	auto* funcPointer = (__m128i(*)(__m128i, __m128i))funcLookup->getAddress();
 	
 	printVec<16>(valsTest);
 	printVec<16>(valsTest2);
 	
-	__m128i valsRetTest = funcPointer();
+	__m128i valsRetTest = funcPointer(valsTest, valsTest2);
 	printVec<16>(valsRetTest);
 	
 	switchToAliveContext();
