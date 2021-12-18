@@ -115,6 +115,9 @@ int main()
 	
 	generateCallFunction<16, 16>(valsTest, valsTest2, testFunc, "test");
 
+	//Testing for variable inputs
+	generateCallFunctionWithVarInput<16, 16>(valsTest, valsTest2, testFunc, "test2");
+
 	TheModule->print(errs(), nullptr);
 	
 	//Add intrinsic module to JIT
@@ -124,7 +127,7 @@ int main()
 	if(JITadd) {
  	  errs() << "Problem adding module to JIT " << JITadd << "\n";
 	}
-	auto funcLookup = JITCompiler->lookup("test");
+	auto funcLookup = JITCompiler->lookup("test2");
 
 	//Below executes if looking up JIT function failed
 	if (auto E = funcLookup.takeError()) {

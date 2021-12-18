@@ -67,6 +67,17 @@ public:
   Value* codegen() override;
 };
 
+/// VariableExprAST - Expression class for referencing a variable, like "a".
+class VariableExprAST : public ExprAST {
+  std::string Name;
+
+public:
+  VariableExprAST(const std::string &Name) : Name(Name) {}
+
+  Value *codegen() override;
+};
+
+
 // CallExprAST - Expression class for function calls.
 class CallExprAST : public ExprAST {
   std::string Callee = "";
@@ -147,6 +158,15 @@ Value* IntVectorExprAST::codegen() {
     v.push_back(static_cast<ConstantInt*>(Vals[i]->codegen()));
   }
   return ConstantVector::get(v);
+}
+
+// Lookup the variable in the NamedValues, and return it
+Value *VariableExprAST::codegen() {
+  // Look this variable up in the function.
+  Value *V = NamedValues[Name];
+  if (!V)
+    throw std::invalid_argument("Unknown variable name");
+  return V;
 }
 
 // Constructs a function call
