@@ -1189,6 +1189,21 @@ public:
 };
 
 
+class ReservedShuffleVector final : public Instr {
+  Value *v1, *v2, *mask;
+public:
+  ReservedShuffleVector(Type &type, std::string &&name,
+                        Value &v1, Value &v2,Value &mask)
+    : Instr(type, std::move(name)), v1(&v1), v2(&v2), mask(&mask) {}
+  std::vector<Value*> operands() const override;
+  void rauw(const Value &what, Value &with) override;
+  void print(std::ostream &os) const override;
+  StateValue toSMT(State &s) const override;
+  smt::expr getTypeConstraints(const Function &f) const override;
+  std::unique_ptr<Instr> dup(const std::string &suffix) const override;
+};
+
+
 class X86IntrinBinOp final : public Instr {
   static constexpr unsigned numOfX86Intrinsics = 47;
 public:

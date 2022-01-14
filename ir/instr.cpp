@@ -4772,6 +4772,57 @@ unique_ptr<Instr> ShuffleVector::dup(Function &f, const string &suffix) const {
 }
 
 
+vector<Value*> ReservedShuffleVector::operands() const {
+  return { v1, v2, mask };
+}
+
+void ReservedShuffleVector::rauw(const Value &what, Value &with) {
+  RAUW(v1);
+  RAUW(v2);
+  RAUW(mask);
+}
+
+void ReservedShuffleVector::print(ostream &os) const {
+  os << getName() << " = shufflevector " << *v1 << ", " << *v2;
+}
+
+StateValue ReservedShuffleVector::toSMT(State &s) const {
+  auto vty = static_cast<const VectorType*>(v1->getType().getAsAggregateType());
+  auto mty = mask->getType().getAsAggregateType();
+  auto sz = vty->numElementsConst();
+  vector<StateValue> vals;
+
+  for (unsigned i = 0, e = mty->numElementsConst(); i != e; ++i) {
+    auto mi = mty->extract(s[*mask], i);
+    auto idx = mi.value.urem(sz);
+    auto [v1v, v1p] = vty->extract(s[*v1], idx);
+    auto [v2v, v2p] = vty->extract(s[*v2], idx);
+    expr v  = expr::mkIf(mi.value.ult(sz), v1v, v2v);
+    expr np = expr::mkIf(mi.value.ult(sz), v1p, v2p);
+
+    expr inbounds = mi.value.ult(vty->numElementsConst() * 2);
+
+    vals.emplace_back(move(v), inbounds & np);
+  }
+
+  return getType().getAsAggregateType()->aggregateVals(vals);
+}
+
+expr ReservedShuffleVector::getTypeConstraints(const Function &f) const {
+  return Value::getTypeConstraints() &&
+         getType().enforceVectorTypeSameChildTy(v1->getType()) &&
+         getType().getAsAggregateType()->numElements() == mask->getType().getAsAggregateType()->numElements() &&
+         v1->getType().enforceVectorType() &&
+         v1->getType() == v2->getType() &&
+         mask->getType().enforceVectorType();
+}
+
+unique_ptr<Instr> ReservedShuffleVector::dup(const string &suffix) const {
+  return make_unique<ReservedShuffleVector>(getType(), getName() + suffix,
+                                            *v1, *v2, *mask);
+}
+
+
 vector<Value*> X86IntrinBinOp::operands() const {
   return { a, b };
 }
