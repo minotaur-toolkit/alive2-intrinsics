@@ -37,6 +37,11 @@ known_call(llvm::CallInst &i, const llvm::TargetLibraryInfo &TLI,
   if (!ty)
     RETURN_EXACT();
 
+  if (i.getCalledFunction()->getName().startswith("__sv_")) {
+    RETURN_VAL(
+      make_unique<ReservedShuffleVector>(*ty, value_name(i), *args[0], *args[1], *args[2]));
+  }
+
   // TODO: add support for checking mismatch of C vs C++ alloc fns
   if (llvm::isMallocOrCallocLikeFn(&i, &TLI)) {
     // aligned malloc
