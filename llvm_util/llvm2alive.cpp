@@ -1164,12 +1164,6 @@ public:
       return NOP(i);
 
     // intel x86 intrinsics
-    case llvm::Intrinsic::x86_sse2_psrl_w:
-    case llvm::Intrinsic::x86_sse2_psrl_d:
-    case llvm::Intrinsic::x86_sse2_psrl_q:
-    case llvm::Intrinsic::x86_avx2_psrl_w:
-    case llvm::Intrinsic::x86_avx2_psrl_d:
-    case llvm::Intrinsic::x86_avx2_psrl_q:
     case llvm::Intrinsic::x86_sse2_pavg_w:
     case llvm::Intrinsic::x86_avx2_pavg_b:
     case llvm::Intrinsic::x86_avx2_pavg_w:
@@ -1184,6 +1178,12 @@ public:
     case llvm::Intrinsic::x86_mmx_punpcklbw:
     case llvm::Intrinsic::x86_mmx_punpcklwd:
     case llvm::Intrinsic::x86_mmx_punpckldq:
+    case llvm::Intrinsic::x86_sse2_psrl_w:
+    case llvm::Intrinsic::x86_sse2_psrl_d:
+    case llvm::Intrinsic::x86_sse2_psrl_q:
+    case llvm::Intrinsic::x86_avx2_psrl_w:
+    case llvm::Intrinsic::x86_avx2_psrl_d:
+    case llvm::Intrinsic::x86_avx2_psrl_q:
     case llvm::Intrinsic::x86_sse2_psrai_w:
     case llvm::Intrinsic::x86_sse2_psrai_d:
     case llvm::Intrinsic::x86_avx2_psrai_w:
@@ -1220,18 +1220,6 @@ public:
       PARSE_BINOP();
       X86IntrinBinOp::Op op;
       switch (i.getIntrinsicID()) {
-      case llvm::Intrinsic::x86_sse2_psrl_w:
-        op = X86IntrinBinOp::sse2_psrl_w; break;
-      case llvm::Intrinsic::x86_sse2_psrl_d:
-        op = X86IntrinBinOp::sse2_psrl_d; break;
-      case llvm::Intrinsic::x86_sse2_psrl_q:
-        op = X86IntrinBinOp::sse2_psrl_q; break;
-      case llvm::Intrinsic::x86_avx2_psrl_w:
-        op = X86IntrinBinOp::avx2_psrl_w; break;
-      case llvm::Intrinsic::x86_avx2_psrl_d:
-        op = X86IntrinBinOp::avx2_psrl_d; break;
-      case llvm::Intrinsic::x86_avx2_psrl_q:
-        op = X86IntrinBinOp::avx2_psrl_q; break;
       case llvm::Intrinsic::x86_sse2_pavg_w:
         op = X86IntrinBinOp::sse2_pavg_w; break;
       case llvm::Intrinsic::x86_avx2_pavg_b:
@@ -1260,6 +1248,18 @@ public:
         op = X86IntrinBinOp::mmx_punpcklwd; break;
       case llvm::Intrinsic::x86_mmx_punpckldq:
         op = X86IntrinBinOp::mmx_punpckldq; break;
+      case llvm::Intrinsic::x86_sse2_psrl_w:
+        op = X86IntrinBinOp::sse2_psrl_w; break;
+      case llvm::Intrinsic::x86_sse2_psrl_d:
+        op = X86IntrinBinOp::sse2_psrl_d; break;
+      case llvm::Intrinsic::x86_sse2_psrl_q:
+        op = X86IntrinBinOp::sse2_psrl_q; break;
+      case llvm::Intrinsic::x86_avx2_psrl_w:
+        op = X86IntrinBinOp::avx2_psrl_w; break;
+      case llvm::Intrinsic::x86_avx2_psrl_d:
+        op = X86IntrinBinOp::avx2_psrl_d; break;
+      case llvm::Intrinsic::x86_avx2_psrl_q:
+        op = X86IntrinBinOp::avx2_psrl_q; break;
       case llvm::Intrinsic::x86_sse2_psrai_w:
         op = X86IntrinBinOp::sse2_psrai_w; break;
       case llvm::Intrinsic::x86_sse2_psrai_d:
