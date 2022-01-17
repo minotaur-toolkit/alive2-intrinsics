@@ -4342,24 +4342,6 @@ void X86IntrinBinOp::rauw(const Value &what, Value &with) {
 void X86IntrinBinOp::print(ostream &os) const {
   const char *str = nullptr;
   switch (op) {
-  case sse2_psrl_w:
-    str = "x86.sse2.psrl.w ";
-    break;
-  case sse2_psrl_d:
-    str = "x86.sse2.psrl.d ";
-    break;
-  case sse2_psrl_q:
-    str = "x86.sse2.psrl.q ";
-    break;
-  case avx2_psrl_w:
-    str = "x86.avx2.psrl.w ";
-    break;
-  case avx2_psrl_d:
-    str = "x86.avx2.psrl.d ";
-    break;
-  case avx2_psrl_q:
-    str = "x86.avx2.psrl.q ";
-    break;
   case sse2_pavg_w:
     str = "x86.sse2.pavg.w ";
     break;
@@ -4401,6 +4383,24 @@ void X86IntrinBinOp::print(ostream &os) const {
     break;
   case mmx_punpckldq:
     str = "x86.mmx.punpckldq ";
+    break;
+  case sse2_psrl_w:
+    str = "x86.sse2.psrl.w ";
+    break;
+  case sse2_psrl_d:
+    str = "x86.sse2.psrl.d ";
+    break;
+  case sse2_psrl_q:
+    str = "x86.sse2.psrl.q ";
+    break;
+  case avx2_psrl_w:
+    str = "x86.avx2.psrl.w ";
+    break;
+  case avx2_psrl_d:
+    str = "x86.avx2.psrl.d ";
+    break;
+  case avx2_psrl_q:
+    str = "x86.avx2.psrl.q ";
     break;
   case sse2_psrai_w:
     str = "x86.sse2.psrai.w ";
