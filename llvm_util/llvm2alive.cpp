@@ -1123,13 +1123,13 @@ public:
     case llvm::Intrinsic::x86_avx2_pavg_b:
     case llvm::Intrinsic::x86_avx2_pavg_w:
     case llvm::Intrinsic::x86_avx2_pshuf_b:
-    case llvm::Intrinsic::x86_ssse3_pshuf_b_128: 
-    case llvm::Intrinsic::x86_mmx_padd_b: 
-    case llvm::Intrinsic::x86_mmx_padd_w: 
-    case llvm::Intrinsic::x86_mmx_padd_d: 
+    case llvm::Intrinsic::x86_ssse3_pshuf_b_128:
+    case llvm::Intrinsic::x86_mmx_padd_b:
+    case llvm::Intrinsic::x86_mmx_padd_w:
+    case llvm::Intrinsic::x86_mmx_padd_d:
     case llvm::Intrinsic::x86_mmx_punpckhbw:
     case llvm::Intrinsic::x86_mmx_punpckhwd:
-    case llvm::Intrinsic::x86_mmx_punpckhdq: 
+    case llvm::Intrinsic::x86_mmx_punpckhdq:
     case llvm::Intrinsic::x86_mmx_punpcklbw:
     case llvm::Intrinsic::x86_mmx_punpcklwd:
     case llvm::Intrinsic::x86_mmx_punpckldq:
@@ -1159,7 +1159,13 @@ public:
     case llvm::Intrinsic::x86_avx2_pslli_q:
     case llvm::Intrinsic::x86_avx512_pslli_w_512:
     case llvm::Intrinsic::x86_avx512_pslli_d_512:
-    case llvm::Intrinsic::x86_avx512_pslli_q_512: {
+    case llvm::Intrinsic::x86_avx512_pslli_q_512:
+    case llvm::Intrinsic::x86_ssse3_psign_b_128:
+    case llvm::Intrinsic::x86_ssse3_psign_w_128:
+    case llvm::Intrinsic::x86_ssse3_psign_d_128:
+    case llvm::Intrinsic::x86_avx2_psign_b:
+    case llvm::Intrinsic::x86_avx2_psign_w:
+    case llvm::Intrinsic::x86_avx2_psign_d: {
       PARSE_BINOP();
       X86IntrinBinOp::Op op;
       switch (i.getIntrinsicID()) {
@@ -1257,6 +1263,18 @@ public:
         op = X86IntrinBinOp::avx512_pslli_d_512; break;
       case llvm::Intrinsic::x86_avx512_pslli_q_512:
         op = X86IntrinBinOp::avx512_pslli_q_512; break;
+      case llvm::Intrinsic::x86_ssse3_psign_b_128:
+        op = X86IntrinBinOp::ssse3_psign_b_128; break;
+      case llvm::Intrinsic::x86_ssse3_psign_w_128:
+        op = X86IntrinBinOp::ssse3_psign_w_128; break;
+      case llvm::Intrinsic::x86_ssse3_psign_d_128:
+        op = X86IntrinBinOp::ssse3_psign_d_128; break;
+      case llvm::Intrinsic::x86_avx2_psign_b:
+        op = X86IntrinBinOp::avx2_psign_b; break;
+      case llvm::Intrinsic::x86_avx2_psign_w:
+        op = X86IntrinBinOp::avx2_psign_w; break;
+      case llvm::Intrinsic::x86_avx2_psign_d:
+        op = X86IntrinBinOp::avx2_psign_d; break;
       default: UNREACHABLE();
       }
       RETURN_IDENTIFIER(make_unique<X86IntrinBinOp>(*ty, value_name(i),
