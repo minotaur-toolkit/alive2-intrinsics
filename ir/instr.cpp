@@ -4974,6 +4974,25 @@ void X86IntrinBinOp::print(ostream &os) const {
     break;
   case avx512_pslli_q_512:
     str = "x86.avx512.pslli.q.512 ";
+    break;
+  case ssse3_psign_b_128:
+    str = "x86.ssse3.psign.b.128 ";
+    break;
+  case ssse3_psign_w_128:
+    str = "x86.ssse3.psign.w.128 ";
+    break;
+  case ssse3_psign_d_128:
+    str = "x86.ssse3.psign.d.128 ";
+    break;
+  case avx2_psign_b:
+    str = "x86.avx2.psign.b ";
+    break;
+  case avx2_psign_w:
+    str = "x86.avx2.psign.w ";
+    break;
+  case avx2_psign_d:
+    str = "x86.avx2.psign.d ";
+    break;
   }
   os << getName() << " = " << str << *a << ", " << *b;
 }
@@ -5008,7 +5027,7 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
 
     for (unsigned i = 0, e = aty->numElementsConst(); i != e; ++i) {
       auto ai = aty->extract(av, i);
-      // ret_i.v = (ite shift.v >= elem_bw, 0, a_i.v >> shift.v) 
+      // ret_i.v = (ite shift.v >= elem_bw, 0, a_i.v >> shift.v)
       expr v = expr::mkIf(shift_v.uge(expr::mkUInt(elem_bw, 64)),
                           expr::mkUInt(0, elem_bw),
                           ai.value.lshr(shift_v.trunc(elem_bw)));
@@ -5022,6 +5041,12 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
   case mmx_padd_b:
   case mmx_padd_w:
   case mmx_padd_d:
+  case ssse3_psign_b_128:
+  case ssse3_psign_w_128:
+  case ssse3_psign_d_128:
+  case avx2_psign_b:
+  case avx2_psign_w:
+  case avx2_psign_d:
   {
     vector<StateValue> vals;
     function<expr(const expr&, const expr&)> fn;
@@ -5042,6 +5067,19 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
     case mmx_padd_d:
       fn = [&](auto a, auto b) -> expr {
         return a + b;
+      };
+      break;
+    case ssse3_psign_b_128:
+    case ssse3_psign_w_128:
+    case ssse3_psign_d_128:
+    case avx2_psign_b:
+    case avx2_psign_w:
+    case avx2_psign_d:
+      fn = [&](auto a, auto b) -> expr {
+        return expr::mkIf(b.isZero(), b,
+                          expr::mkIf(b.isNegative(),
+                                     expr::mkUInt(0, a.bits()) - a,
+                                     a));
       };
       break;
     default: UNREACHABLE();
@@ -5102,7 +5140,7 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
     for (unsigned i = startVal; i != endVal; ++i) {
       auto ai = aty->extract(av, i);
       auto bi = bty->extract(bv, i);
-      
+
       vals.emplace_back(move(ai));
       vals.emplace_back(move(bi));
     }
