@@ -1079,7 +1079,7 @@ public:
 
 
 class X86IntrinBinOp final : public Instr {
-  static constexpr unsigned numOfX86Intrinsics = 47;
+  static constexpr unsigned numOfX86Intrinsics = 53;
 public:
   enum Op {
   /* llvm.x86.sse2.psrl.w */        sse2_psrl_w,
@@ -1129,6 +1129,12 @@ public:
   /* llvm.x86.avx512.pslli.w.512 */ avx512_pslli_w_512,
   /* llvm.x86.avx512.pslli.d.512 */ avx512_pslli_d_512,
   /* llvm.x86.avx512.pslli.q.512 */ avx512_pslli_q_512,
+  /* llvm.x86.ssse3.psign.b.128 */  ssse3_psign_b_128,
+  /* llvm.x86.ssse3.psign.w.128 */  ssse3_psign_w_128,
+  /* llvm.x86.ssse3.psign.d.128 */  ssse3_psign_d_128,
+  /* llvm.x86.avx2.psign.b */       avx2_psign_b,
+  /* llvm.x86.avx2.psign.w */       avx2_psign_w,
+  /* llvm.x86.avx2.psign.d */       avx2_psign_d,
   };
 
   // the shape of a vector is stored as <# of lanes, element bits>
@@ -1180,6 +1186,12 @@ public:
   /* avx512_pslli_w_512 */ std::make_pair(32, 16),
   /* avx512_pslli_d_512 */ std::make_pair(16, 32),
   /* avx512_pslli_q_512 */ std::make_pair(8, 64),
+  /* ssse3_psign_b_128 */  std::make_pair(16, 8),
+  /* ssse3_psign_w_128 */  std::make_pair(8, 16),
+  /* ssse3_psign_d_128 */  std::make_pair(4, 32),
+  /* avx2_psign_b */       std::make_pair(32, 8),
+  /* avx2_psign_w */       std::make_pair(16, 16),
+  /* avx2_psign_d */       std::make_pair(8, 32),
   };
   static constexpr std::array<std::pair<unsigned, unsigned>, numOfX86Intrinsics> shape_op1 = {
   /* sse2_psrl_w */        std::make_pair(8, 16),
@@ -1229,6 +1241,12 @@ public:
   /* avx512_pslli_w_512 */ std::make_pair(1, 32),
   /* avx512_pslli_d_512 */ std::make_pair(1, 32),
   /* avx512_pslli_q_512 */ std::make_pair(1, 32),
+  /* ssse3_psign_b_128 */  std::make_pair(16, 8),
+  /* ssse3_psign_w_128 */  std::make_pair(8, 16),
+  /* ssse3_psign_d_128 */  std::make_pair(4, 32),
+  /* avx2_psign_b */       std::make_pair(32, 8),
+  /* avx2_psign_w */       std::make_pair(16, 16),
+  /* avx2_psign_d */       std::make_pair(8, 32),
   };
   static constexpr std::array<std::pair<unsigned, unsigned>, numOfX86Intrinsics> shape_ret = {
   /* sse2_psrl_w */        std::make_pair(8, 16),
@@ -1278,6 +1296,12 @@ public:
   /* avx512_pslli_w_512 */ std::make_pair(32, 16),
   /* avx512_pslli_d_512 */ std::make_pair(16, 32),
   /* avx512_pslli_q_512 */ std::make_pair(8, 64),
+  /* ssse3_psign_b_128 */  std::make_pair(16, 8),
+  /* ssse3_psign_w_128 */  std::make_pair(8, 16),
+  /* ssse3_psign_d_128 */  std::make_pair(4, 32),
+  /* avx2_psign_b */       std::make_pair(32, 8),
+  /* avx2_psign_w */       std::make_pair(16, 16),
+  /* avx2_psign_d */       std::make_pair(8, 32),
   };
 
 private:
