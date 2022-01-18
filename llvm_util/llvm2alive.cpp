@@ -985,15 +985,9 @@ public:
     case llvm::Intrinsic::x86_avx2_psrl_w:
     case llvm::Intrinsic::x86_avx2_psrl_d:
     case llvm::Intrinsic::x86_avx2_psrl_q:
-    case llvm::Intrinsic::x86_sse2_psrai_w:
-    case llvm::Intrinsic::x86_sse2_psrai_d:
-    case llvm::Intrinsic::x86_avx2_psrai_w:
-    case llvm::Intrinsic::x86_avx2_psrai_d:
-    case llvm::Intrinsic::x86_avx512_psrai_w_512:
-    case llvm::Intrinsic::x86_avx512_psrai_d_512:
-    case llvm::Intrinsic::x86_avx512_psrai_q_128:
-    case llvm::Intrinsic::x86_avx512_psrai_q_256:
-    case llvm::Intrinsic::x86_avx512_psrai_q_512:
+    case llvm::Intrinsic::x86_avx512_psrl_w_512:
+    case llvm::Intrinsic::x86_avx512_psrl_d_512:
+    case llvm::Intrinsic::x86_avx512_psrl_q_512:
     case llvm::Intrinsic::x86_sse2_psrli_w:
     case llvm::Intrinsic::x86_sse2_psrli_d:
     case llvm::Intrinsic::x86_sse2_psrli_q:
@@ -1003,6 +997,51 @@ public:
     case llvm::Intrinsic::x86_avx512_psrli_w_512:
     case llvm::Intrinsic::x86_avx512_psrli_d_512:
     case llvm::Intrinsic::x86_avx512_psrli_q_512:
+    case llvm::Intrinsic::x86_avx2_psrlv_d:
+    case llvm::Intrinsic::x86_avx2_psrlv_d_256:
+    case llvm::Intrinsic::x86_avx2_psrlv_q:
+    case llvm::Intrinsic::x86_avx2_psrlv_q_256:
+    case llvm::Intrinsic::x86_avx512_psrlv_d_512:
+    case llvm::Intrinsic::x86_avx512_psrlv_q_512:
+    case llvm::Intrinsic::x86_avx512_psrlv_w_128:
+    case llvm::Intrinsic::x86_avx512_psrlv_w_256:
+    case llvm::Intrinsic::x86_avx512_psrlv_w_512:
+    case llvm::Intrinsic::x86_sse2_psra_w:
+    case llvm::Intrinsic::x86_sse2_psra_d:
+    case llvm::Intrinsic::x86_avx2_psra_w:
+    case llvm::Intrinsic::x86_avx2_psra_d:
+    case llvm::Intrinsic::x86_avx512_psra_q_128:
+    case llvm::Intrinsic::x86_avx512_psra_q_256:
+    case llvm::Intrinsic::x86_avx512_psra_w_512:
+    case llvm::Intrinsic::x86_avx512_psra_d_512:
+    case llvm::Intrinsic::x86_avx512_psra_q_512:
+    case llvm::Intrinsic::x86_sse2_psrai_w:
+    case llvm::Intrinsic::x86_sse2_psrai_d:
+    case llvm::Intrinsic::x86_avx2_psrai_w:
+    case llvm::Intrinsic::x86_avx2_psrai_d:
+    case llvm::Intrinsic::x86_avx512_psrai_w_512:
+    case llvm::Intrinsic::x86_avx512_psrai_d_512:
+    case llvm::Intrinsic::x86_avx512_psrai_q_128:
+    case llvm::Intrinsic::x86_avx512_psrai_q_256:
+    case llvm::Intrinsic::x86_avx512_psrai_q_512:
+    case llvm::Intrinsic::x86_avx2_psrav_d:
+    case llvm::Intrinsic::x86_avx2_psrav_d_256:
+    case llvm::Intrinsic::x86_avx512_psrav_d_512:
+    case llvm::Intrinsic::x86_avx512_psrav_q_128:
+    case llvm::Intrinsic::x86_avx512_psrav_q_256:
+    case llvm::Intrinsic::x86_avx512_psrav_q_512:
+    case llvm::Intrinsic::x86_avx512_psrav_w_128:
+    case llvm::Intrinsic::x86_avx512_psrav_w_256:
+    case llvm::Intrinsic::x86_avx512_psrav_w_512:
+    case llvm::Intrinsic::x86_sse2_psll_w:
+    case llvm::Intrinsic::x86_sse2_psll_d:
+    case llvm::Intrinsic::x86_sse2_psll_q:
+    case llvm::Intrinsic::x86_avx2_psll_w:
+    case llvm::Intrinsic::x86_avx2_psll_d:
+    case llvm::Intrinsic::x86_avx2_psll_q:
+    case llvm::Intrinsic::x86_avx512_psll_w_512:
+    case llvm::Intrinsic::x86_avx512_psll_d_512:
+    case llvm::Intrinsic::x86_avx512_psll_q_512:
     case llvm::Intrinsic::x86_sse2_pslli_w:
     case llvm::Intrinsic::x86_sse2_pslli_d:
     case llvm::Intrinsic::x86_sse2_pslli_q:
@@ -1012,6 +1051,15 @@ public:
     case llvm::Intrinsic::x86_avx512_pslli_w_512:
     case llvm::Intrinsic::x86_avx512_pslli_d_512:
     case llvm::Intrinsic::x86_avx512_pslli_q_512:
+    case llvm::Intrinsic::x86_avx2_psllv_d:
+    case llvm::Intrinsic::x86_avx2_psllv_d_256:
+    case llvm::Intrinsic::x86_avx2_psllv_q:
+    case llvm::Intrinsic::x86_avx2_psllv_q_256:
+    case llvm::Intrinsic::x86_avx512_psllv_d_512:
+    case llvm::Intrinsic::x86_avx512_psllv_q_512:
+    case llvm::Intrinsic::x86_avx512_psllv_w_128:
+    case llvm::Intrinsic::x86_avx512_psllv_w_256:
+    case llvm::Intrinsic::x86_avx512_psllv_w_512:
     case llvm::Intrinsic::x86_ssse3_psign_b_128:
     case llvm::Intrinsic::x86_ssse3_psign_w_128:
     case llvm::Intrinsic::x86_ssse3_psign_d_128:
@@ -1061,24 +1109,12 @@ public:
         op = X86IntrinBinOp::avx2_psrl_d; break;
       case llvm::Intrinsic::x86_avx2_psrl_q:
         op = X86IntrinBinOp::avx2_psrl_q; break;
-      case llvm::Intrinsic::x86_sse2_psrai_w:
-        op = X86IntrinBinOp::sse2_psrai_w; break;
-      case llvm::Intrinsic::x86_sse2_psrai_d:
-        op = X86IntrinBinOp::sse2_psrai_d; break;
-      case llvm::Intrinsic::x86_avx2_psrai_w:
-        op = X86IntrinBinOp::avx2_psrai_w; break;
-      case llvm::Intrinsic::x86_avx2_psrai_d:
-        op = X86IntrinBinOp::avx2_psrai_d; break;
-      case llvm::Intrinsic::x86_avx512_psrai_w_512:
-        op = X86IntrinBinOp::avx512_psrai_w_512; break;
-      case llvm::Intrinsic::x86_avx512_psrai_d_512:
-        op = X86IntrinBinOp::avx512_psrai_d_512; break;
-      case llvm::Intrinsic::x86_avx512_psrai_q_128:
-        op = X86IntrinBinOp::avx512_psrai_q_128; break;
-      case llvm::Intrinsic::x86_avx512_psrai_q_256:
-        op = X86IntrinBinOp::avx512_psrai_q_256; break;
-      case llvm::Intrinsic::x86_avx512_psrai_q_512:
-        op = X86IntrinBinOp::avx512_psrai_q_512; break;
+      case llvm::Intrinsic::x86_avx512_psrl_w_512:
+        op = X86IntrinBinOp::avx512_psrl_w_512; break;
+      case llvm::Intrinsic::x86_avx512_psrl_d_512:
+        op = X86IntrinBinOp::avx512_psrl_d_512; break;
+      case llvm::Intrinsic::x86_avx512_psrl_q_512:
+        op = X86IntrinBinOp::avx512_psrl_q_512; break;
       case llvm::Intrinsic::x86_sse2_psrli_w:
         op = X86IntrinBinOp::sse2_psrli_w; break;
       case llvm::Intrinsic::x86_sse2_psrli_d:
@@ -1097,6 +1133,78 @@ public:
         op = X86IntrinBinOp::avx512_psrli_d_512; break;
       case llvm::Intrinsic::x86_avx512_psrli_q_512:
         op = X86IntrinBinOp::avx512_psrli_q_512; break;
+      case llvm::Intrinsic::x86_avx2_psrlv_d:
+        op = X86IntrinBinOp::avx2_psrlv_d; break;
+      case llvm::Intrinsic::x86_avx2_psrlv_d_256:
+        op = X86IntrinBinOp::avx2_psrlv_d_256; break;
+      case llvm::Intrinsic::x86_avx2_psrlv_q:
+        op = X86IntrinBinOp::avx2_psrlv_q; break;
+      case llvm::Intrinsic::x86_avx2_psrlv_q_256:
+        op = X86IntrinBinOp::avx2_psrlv_q_256; break;
+      case llvm::Intrinsic::x86_avx512_psrlv_d_512:
+        op = X86IntrinBinOp::avx512_psrlv_d_512; break;
+      case llvm::Intrinsic::x86_avx512_psrlv_q_512:
+        op = X86IntrinBinOp::avx512_psrlv_q_512; break;
+      case llvm::Intrinsic::x86_avx512_psrlv_w_128:
+        op = X86IntrinBinOp::avx512_psrlv_w_128; break;
+      case llvm::Intrinsic::x86_avx512_psrlv_w_256:
+        op = X86IntrinBinOp::avx512_psrlv_w_256; break;
+      case llvm::Intrinsic::x86_avx512_psrlv_w_512:
+        op = X86IntrinBinOp::avx512_psrlv_w_512; break;
+      case llvm::Intrinsic::x86_sse2_psra_w:
+        op = X86IntrinBinOp::sse2_psra_w; break;
+      case llvm::Intrinsic::x86_sse2_psra_d:
+        op = X86IntrinBinOp::sse2_psra_d; break;
+      case llvm::Intrinsic::x86_avx2_psra_w:
+        op = X86IntrinBinOp::sse2_psra_w; break;
+      case llvm::Intrinsic::x86_avx2_psra_d:
+        op = X86IntrinBinOp::sse2_psra_d; break;
+      case llvm::Intrinsic::x86_avx512_psra_q_128:
+        op = X86IntrinBinOp::avx512_psra_q_128; break;
+      case llvm::Intrinsic::x86_avx512_psra_q_256:
+        op = X86IntrinBinOp::avx512_psra_q_256; break;
+      case llvm::Intrinsic::x86_avx512_psra_w_512:
+        op = X86IntrinBinOp::avx512_psra_w_512; break;
+      case llvm::Intrinsic::x86_avx512_psra_d_512:
+        op = X86IntrinBinOp::avx512_psra_d_512; break;
+      case llvm::Intrinsic::x86_avx512_psra_q_512:
+        op = X86IntrinBinOp::avx512_psra_q_512; break;
+      case llvm::Intrinsic::x86_sse2_psrai_w:
+        op = X86IntrinBinOp::sse2_psrai_w; break;
+      case llvm::Intrinsic::x86_sse2_psrai_d:
+        op = X86IntrinBinOp::sse2_psrai_d; break;
+      case llvm::Intrinsic::x86_avx2_psrai_w:
+        op = X86IntrinBinOp::avx2_psrai_w; break;
+      case llvm::Intrinsic::x86_avx2_psrai_d:
+        op = X86IntrinBinOp::avx2_psrai_d; break;
+      case llvm::Intrinsic::x86_avx512_psrai_w_512:
+        op = X86IntrinBinOp::avx512_psrai_w_512; break;
+      case llvm::Intrinsic::x86_avx512_psrai_d_512:
+        op = X86IntrinBinOp::avx512_psrai_d_512; break;
+      case llvm::Intrinsic::x86_avx512_psrai_q_128:
+        op = X86IntrinBinOp::avx512_psrai_q_128; break;
+      case llvm::Intrinsic::x86_avx512_psrai_q_256:
+        op = X86IntrinBinOp::avx512_psrai_q_256; break;
+      case llvm::Intrinsic::x86_avx512_psrai_q_512:
+        op = X86IntrinBinOp::avx512_psrai_q_512; break;
+      case llvm::Intrinsic::x86_avx2_psrav_d:
+        op = X86IntrinBinOp::avx2_psrav_d; break;
+      case llvm::Intrinsic::x86_avx2_psrav_d_256:
+        op = X86IntrinBinOp::avx2_psrav_d_256; break;
+      case llvm::Intrinsic::x86_avx512_psrav_d_512:
+        op = X86IntrinBinOp::avx512_psrav_d_512; break;
+      case llvm::Intrinsic::x86_avx512_psrav_q_128:
+        op = X86IntrinBinOp::avx512_psrav_q_128; break;
+      case llvm::Intrinsic::x86_avx512_psrav_q_256:
+        op = X86IntrinBinOp::avx512_psrav_q_256; break;
+      case llvm::Intrinsic::x86_avx512_psrav_q_512:
+        op = X86IntrinBinOp::avx512_psrav_q_512; break;
+      case llvm::Intrinsic::x86_avx512_psrav_w_128:
+        op = X86IntrinBinOp::avx512_psrav_w_128; break;
+      case llvm::Intrinsic::x86_avx512_psrav_w_256:
+        op = X86IntrinBinOp::avx512_psrav_w_256; break;
+      case llvm::Intrinsic::x86_avx512_psrav_w_512:
+        op = X86IntrinBinOp::avx512_psrav_w_512; break;
       case llvm::Intrinsic::x86_sse2_pslli_w:
         op = X86IntrinBinOp::sse2_pslli_w; break;
       case llvm::Intrinsic::x86_sse2_pslli_d:
@@ -1115,6 +1223,24 @@ public:
         op = X86IntrinBinOp::avx512_pslli_d_512; break;
       case llvm::Intrinsic::x86_avx512_pslli_q_512:
         op = X86IntrinBinOp::avx512_pslli_q_512; break;
+      case llvm::Intrinsic::x86_avx2_psllv_d:
+        op = X86IntrinBinOp::avx2_psllv_d; break;
+      case llvm::Intrinsic::x86_avx2_psllv_d_256:
+        op = X86IntrinBinOp::avx2_psllv_d_256; break;
+      case llvm::Intrinsic::x86_avx2_psllv_q:
+        op = X86IntrinBinOp::avx2_psllv_q; break;
+      case llvm::Intrinsic::x86_avx2_psllv_q_256:
+        op = X86IntrinBinOp::avx2_psllv_q_256; break;
+      case llvm::Intrinsic::x86_avx512_psllv_d_512:
+        op = X86IntrinBinOp::avx512_psllv_d_512; break;
+      case llvm::Intrinsic::x86_avx512_psllv_q_512:
+        op = X86IntrinBinOp::avx512_psllv_q_512; break;
+      case llvm::Intrinsic::x86_avx512_psllv_w_128:
+        op = X86IntrinBinOp::avx512_psllv_w_128; break;
+      case llvm::Intrinsic::x86_avx512_psllv_w_256:
+        op = X86IntrinBinOp::avx512_psllv_w_256; break;
+      case llvm::Intrinsic::x86_avx512_psllv_w_512:
+        op = X86IntrinBinOp::avx512_psllv_w_512; break;
       case llvm::Intrinsic::x86_ssse3_psign_b_128:
         op = X86IntrinBinOp::ssse3_psign_b_128; break;
       case llvm::Intrinsic::x86_ssse3_psign_w_128:
