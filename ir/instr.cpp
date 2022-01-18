@@ -4402,32 +4402,14 @@ void X86IntrinBinOp::print(ostream &os) const {
   case avx2_psrl_q:
     str = "x86.avx2.psrl.q ";
     break;
-  case sse2_psrai_w:
-    str = "x86.sse2.psrai.w ";
+  case avx512_psrl_w_512:
+    str = "x86.avx512.psrl.w.512 ";
     break;
-  case sse2_psrai_d:
-    str = "x86.sse2.psrai.d ";
+  case avx512_psrl_d_512:
+    str = "x86.avx512.psrl.d.512 ";
     break;
-  case avx2_psrai_w:
-    str = "x86.avx2.psrai.w ";
-    break;
-  case avx2_psrai_d:
-    str = "x86.avx2.psrai.d ";
-    break;
-  case avx512_psrai_w_512:
-    str = "x86.avx512.psrai.w.512 ";
-    break;
-  case avx512_psrai_d_512:
-    str = "x86.avx512.psrai.d.512 ";
-    break;
-  case avx512_psrai_q_128:
-    str = "x86.avx512.psrai.q.128 ";
-    break;
-  case avx512_psrai_q_256:
-    str = "x86.avx512.psrai.q.256 ";
-    break;
-  case avx512_psrai_q_512:
-    str = "x86.avx512.psrai.q.512 ";
+  case avx512_psrl_q_512:
+    str = "x86.avx512.psrl.q.512 ";
     break;
   case sse2_psrli_w:
     str = "x86.sse2.psrli.w ";
@@ -4455,6 +4437,142 @@ void X86IntrinBinOp::print(ostream &os) const {
     break;
   case avx512_psrli_q_512:
     str = "x86.avx512.psrli.q.512 ";
+    break;
+  case avx2_psrlv_d:
+    str = "x86.avx2.psrlv.d ";
+    break;
+  case avx2_psrlv_d_256:
+    str = "x86.avx2.psrlv.d.256 ";
+    break;
+  case avx2_psrlv_q:
+    str = "x86.avx2.psrlv.q ";
+    break;
+  case avx2_psrlv_q_256:
+    str = "x86.avx2.psrlv.q.256 ";
+    break;
+  case avx512_psrlv_d_512:
+    str = "x86.avx512.psrlv.d.512 ";
+    break;
+  case avx512_psrlv_q_512:
+    str = "x86.avx512.psrlv.q.512 ";
+    break;
+  case avx512_psrlv_w_128:
+    str = "x86.avx512.psrlv.w.128 ";
+    break;
+  case avx512_psrlv_w_256:
+    str = "x86.avx512.psrlv.w.256 ";
+    break;
+  case avx512_psrlv_w_512:
+    str = "x86.avx512.psrlv.w.512 ";
+    break;
+  case sse2_psra_w:
+    str = "x86.sse2.psra.w ";
+    break;
+  case sse2_psra_d:
+    str = "x86.sse2.psra.d ";
+    break;
+  case avx2_psra_w:
+    str = "x86.avx2.psra.w ";
+    break;
+  case avx2_psra_d:
+    str = "x86.avx2.psra.d ";
+    break;
+  case avx512_psra_q_128:
+    str = "x86.avx512.psra.q.128 ";
+    break;
+  case avx512_psra_q_256:
+    str = "x86.avx512.psra.q.256 ";
+    break;
+  case avx512_psra_w_512:
+    str = "x86.avx512.psra.w.512 ";
+    break;
+  case avx512_psra_d_512:
+    str = "x86.avx512.psra.d.512 ";
+    break;
+  case avx512_psra_q_512:
+    str = "x86.avx512.psra.q.512 ";
+    break;
+  case sse2_psrai_w:
+    str = "x86.sse2.psrai.w ";
+    break;
+  case sse2_psrai_d:
+    str = "x86.sse2.psrai.d ";
+    break;
+  case avx2_psrai_w:
+    str = "x86.avx2.psrai.w ";
+    break;
+  case avx2_psrai_d:
+    str = "x86.avx2.psrai.d ";
+    break;
+  case avx512_psrai_w_512:
+    str = "x86.avx512.psrai.w.512 ";
+    break;
+  case avx512_psrai_d_512:
+    str = "x86.avx512.psrai.d.512 ";
+    break;
+  case avx512_psrai_q_128:
+    str = "x86.avx512.psrai.q.128 ";
+    break;
+  case avx512_psrai_q_256:
+    str = "x86.avx512.psrai.q.256 ";
+    break;
+  case avx512_psrai_q_512:
+    str = "x86.avx512.psrai.q.512 ";
+    break;
+  case avx2_psrav_d:
+    str = "x86.avx2.psrav.d ";
+    break;
+  case avx2_psrav_d_256:
+    str = "x86.avx2.psrav.d.256 ";
+    break;
+  case avx512_psrav_d_512:
+    str = "x86.avx512.psrav.d.512 ";
+    break;
+  case avx512_psrav_q_128:
+    str = "x86.avx512.psrav.q.128 ";
+    break;
+  case avx512_psrav_q_256:
+    str = "x86.avx512.psrav.q.256 ";
+    break;
+  case avx512_psrav_q_512:
+    str = "x86.avx512.psrav.q.512 ";
+    break;
+  case avx512_psrav_w_128:
+    str = "x86.avx512.psrav.w.128 ";
+    break;
+  case avx512_psrav_w_256:
+    str = "x86.avx512.psrav.w.256 ";
+    break;
+  case avx512_psrav_w_512:
+    str = "x86.avx512.psrav.w.512 ";
+    break;
+  case sse2_psll_w:
+    str = "x86.sse2.psll.w ";
+    break;
+  case sse2_psll_d:
+    str = "x86.sse2.psll.d ";
+    break;
+  case sse2_psll_q:
+    str = "x86.sse2.psll.q ";
+    break;
+  case avx2_psll_w:
+    str = "x86.avx2.psll.w ";
+    break;
+  case avx2_psll_d:
+    str = "x86.avx2.psll.d ";
+    break;
+  case avx2_psll_q:
+    str = "x86.avx2.psll.q ";
+    break;
+  case avx512_psll_w_512:
+    str = "x86.avx512.psll.w.512 ";
+    break;
+  case avx512_psll_d_512:
+    str = "x86.avx512.psll.d.512 ";
+    break;
+  case avx512_psll_q_512:
+    str = "x86.avx512.psll.q.512 ";
+    break;
   case sse2_pslli_w:
     str = "x86.sse2.pslli.w ";
     break;
@@ -4481,6 +4599,33 @@ void X86IntrinBinOp::print(ostream &os) const {
     break;
   case avx512_pslli_q_512:
     str = "x86.avx512.pslli.q.512 ";
+    break;
+  case avx2_psllv_d:
+    str = "x86.avx2.psllv.d ";
+    break;
+  case avx2_psllv_d_256:
+    str = "x86.avx2.psllv.d.256 ";
+    break;
+  case avx2_psllv_q:
+    str = "x86.avx2.psllv.q ";
+    break;
+  case avx2_psllv_q_256:
+    str = "x86.avx2.psllv.q.256 ";
+    break;
+  case avx512_psllv_d_512:
+    str = "x86.avx512.psllv.d.512 ";
+    break;
+  case avx512_psllv_q_512:
+    str = "x86.avx512.psllv.q.512 ";
+    break;
+  case avx512_psllv_w_128:
+    str = "x86.avx512.psllv.w.128 ";
+    break;
+  case avx512_psllv_w_256:
+    str = "x86.avx512.psllv.w.256 ";
+    break;
+  case avx512_psllv_w_512:
+    str = "x86.avx512.psllv.w.512 ";
     break;
   case ssse3_psign_b_128:
     str = "x86.ssse3.psign.b.128 ";
@@ -4512,12 +4657,34 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
   auto &bv = s[*b];
 
   switch (op) {
+  // shift by one variable
   case sse2_psrl_w:
   case sse2_psrl_d:
   case sse2_psrl_q:
   case avx2_psrl_w:
   case avx2_psrl_d:
   case avx2_psrl_q:
+  case avx512_psrl_w_512:
+  case avx512_psrl_d_512:
+  case avx512_psrl_q_512:
+  case sse2_psra_w:
+  case sse2_psra_d:
+  case avx2_psra_w:
+  case avx2_psra_d:
+  case avx512_psra_q_128:
+  case avx512_psra_q_256:
+  case avx512_psra_w_512:
+  case avx512_psra_d_512:
+  case avx512_psra_q_512:
+  case sse2_psll_w:
+  case sse2_psll_d:
+  case sse2_psll_q:
+  case avx2_psll_w:
+  case avx2_psll_d:
+  case avx2_psll_q:
+  case avx512_psll_w_512:
+  case avx512_psll_d_512:
+  case avx512_psll_q_512:
   {
     vector<StateValue> vals;
     unsigned elem_bw = bty->getChild(0).bits();
@@ -4531,17 +4698,60 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
       // if any elements in lower 64 bits is poison, the result is poison
       shift_np &= vv.non_poison;
     }
-
+    function<expr(const expr&, const expr&)> fn;
+    switch(op) {
+    case sse2_psrl_w:
+    case sse2_psrl_d:
+    case sse2_psrl_q:
+    case avx2_psrl_w:
+    case avx2_psrl_d:
+    case avx2_psrl_q:
+    case avx512_psrl_w_512:
+    case avx512_psrl_d_512:
+    case avx512_psrl_q_512:
+      fn = [&](auto a, auto b) -> expr {
+        return a.lshr(b);
+      };
+      break;
+    case sse2_psra_w:
+    case sse2_psra_d:
+    case avx2_psra_w:
+    case avx2_psra_d:
+    case avx512_psra_q_128:
+    case avx512_psra_q_256:
+    case avx512_psra_w_512:
+    case avx512_psra_d_512:
+    case avx512_psra_q_512:
+      fn = [&](auto a, auto b) -> expr {
+        return a.ashr(b);
+      };
+      break;
+    case sse2_psll_w:
+    case sse2_psll_d:
+    case sse2_psll_q:
+    case avx2_psll_w:
+    case avx2_psll_d:
+    case avx2_psll_q:
+    case avx512_psll_w_512:
+    case avx512_psll_d_512:
+    case avx512_psll_q_512:
+      fn = [&](auto a, auto b) -> expr {
+        return a << b;
+      };
+      break;
+    default: UNREACHABLE();
+    }
     for (unsigned i = 0, e = aty->numElementsConst(); i != e; ++i) {
       auto ai = aty->extract(av, i);
       // ret_i.v = (ite shift.v >= elem_bw, 0, a_i.v >> shift.v)
       expr v = expr::mkIf(shift_v.uge(expr::mkUInt(elem_bw, 64)),
                           expr::mkUInt(0, elem_bw),
-                          ai.value.lshr(shift_v.trunc(elem_bw)));
+                          fn(ai.value, shift_v.trunc(elem_bw)));
       vals.emplace_back(move(v), shift_np && ai.non_poison);
     }
     return rty->aggregateVals(vals);
   }
+  // vertical
   case sse2_pavg_w:
   case avx2_pavg_b:
   case avx2_pavg_w:
@@ -4554,6 +4764,33 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
   case avx2_psign_b:
   case avx2_psign_w:
   case avx2_psign_d:
+  case avx2_psrlv_d:
+  case avx2_psrlv_d_256:
+  case avx2_psrlv_q:
+  case avx2_psrlv_q_256:
+  case avx512_psrlv_d_512:
+  case avx512_psrlv_q_512:
+  case avx512_psrlv_w_128:
+  case avx512_psrlv_w_256:
+  case avx512_psrlv_w_512:
+  case avx2_psrav_d:
+  case avx2_psrav_d_256:
+  case avx512_psrav_d_512:
+  case avx512_psrav_q_128:
+  case avx512_psrav_q_256:
+  case avx512_psrav_q_512:
+  case avx512_psrav_w_128:
+  case avx512_psrav_w_256:
+  case avx512_psrav_w_512:
+  case avx2_psllv_d:
+  case avx2_psllv_d_256:
+  case avx2_psllv_q:
+  case avx2_psllv_q_256:
+  case avx512_psllv_d_512:
+  case avx512_psllv_q_512:
+  case avx512_psllv_w_128:
+  case avx512_psllv_w_256:
+  case avx512_psllv_w_512:
   {
     vector<StateValue> vals;
     function<expr(const expr&, const expr&)> fn;
@@ -4587,6 +4824,54 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
                           expr::mkIf(b.isNegative(),
                                      expr::mkUInt(0, a.bits()) - a,
                                      a));
+      };
+      break;
+    case avx2_psrlv_d:
+    case avx2_psrlv_d_256:
+    case avx2_psrlv_q:
+    case avx2_psrlv_q_256:
+    case avx512_psrlv_d_512:
+    case avx512_psrlv_q_512:
+    case avx512_psrlv_w_128:
+    case avx512_psrlv_w_256:
+    case avx512_psrlv_w_512:
+      fn = [&](auto a, auto b) -> expr {
+        unsigned bw = a.bits();
+        return expr::mkIf(b.uge(expr::mkUInt(bw, bw)),
+                          expr::mkUInt(0, bw),
+                          a.lshr(b));
+      };
+      break;
+    case avx2_psrav_d:
+    case avx2_psrav_d_256:
+    case avx512_psrav_d_512:
+    case avx512_psrav_q_128:
+    case avx512_psrav_q_256:
+    case avx512_psrav_q_512:
+    case avx512_psrav_w_128:
+    case avx512_psrav_w_256:
+    case avx512_psrav_w_512:
+      fn = [&](auto a, auto b) -> expr {
+        unsigned bw = a.bits();
+        return expr::mkIf(b.uge(expr::mkUInt(bw, bw)),
+                          expr::mkUInt(0, bw),
+                          a.ashr(b));
+      };
+      break;
+    case avx2_psllv_d:
+    case avx2_psllv_d_256:
+    case avx2_psllv_q:
+    case avx2_psllv_q_256:
+    case avx512_psllv_d_512:
+    case avx512_psllv_q_512:
+    case avx512_psllv_w_128:
+    case avx512_psllv_w_256:
+    case avx512_psllv_w_512:
+      fn = [&](auto a, auto b) -> expr {
+        unsigned bw = a.bits();
+        return expr::mkIf(b.uge(expr::mkUInt(bw, bw)),
+                          expr::mkUInt(0, bw),
+                          a << b);
       };
       break;
     default: UNREACHABLE();
@@ -4654,15 +4939,6 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
 
     return rty->aggregateVals(vals);
   }
-  case sse2_psrai_w:
-  case sse2_psrai_d:
-  case avx2_psrai_w:
-  case avx2_psrai_d:
-  case avx512_psrai_w_512:
-  case avx512_psrai_d_512:
-  case avx512_psrai_q_128:
-  case avx512_psrai_q_256:
-  case avx512_psrai_q_512:
   case sse2_psrli_w:
   case sse2_psrli_d:
   case sse2_psrli_q:
@@ -4672,6 +4948,15 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
   case avx512_psrli_w_512:
   case avx512_psrli_d_512:
   case avx512_psrli_q_512:
+  case sse2_psrai_w:
+  case sse2_psrai_d:
+  case avx2_psrai_w:
+  case avx2_psrai_d:
+  case avx512_psrai_w_512:
+  case avx512_psrai_d_512:
+  case avx512_psrai_q_128:
+  case avx512_psrai_q_256:
+  case avx512_psrai_q_512:
   case sse2_pslli_w:
   case sse2_pslli_d:
   case sse2_pslli_q:
