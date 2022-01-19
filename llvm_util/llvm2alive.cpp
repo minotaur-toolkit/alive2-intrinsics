@@ -1122,8 +1122,11 @@ public:
 
     // intel x86 intrinsics
     case llvm::Intrinsic::x86_sse2_pavg_w:
-    case llvm::Intrinsic::x86_avx2_pavg_b:
+    case llvm::Intrinsic::x86_sse2_pavg_b:
     case llvm::Intrinsic::x86_avx2_pavg_w:
+    case llvm::Intrinsic::x86_avx2_pavg_b:
+    case llvm::Intrinsic::x86_avx512_pavg_w_512:
+    case llvm::Intrinsic::x86_avx512_pavg_b_512:
     case llvm::Intrinsic::x86_avx2_pshuf_b:
     case llvm::Intrinsic::x86_ssse3_pshuf_b_128:
     case llvm::Intrinsic::x86_mmx_padd_b:
@@ -1227,10 +1230,16 @@ public:
       switch (i.getIntrinsicID()) {
       case llvm::Intrinsic::x86_sse2_pavg_w:
         op = X86IntrinBinOp::sse2_pavg_w; break;
-      case llvm::Intrinsic::x86_avx2_pavg_b:
-        op = X86IntrinBinOp::avx2_pavg_b; break;
+      case llvm::Intrinsic::x86_sse2_pavg_b:
+        op = X86IntrinBinOp::sse2_pavg_b; break;
       case llvm::Intrinsic::x86_avx2_pavg_w:
         op = X86IntrinBinOp::avx2_pavg_w; break;
+      case llvm::Intrinsic::x86_avx2_pavg_b:
+        op = X86IntrinBinOp::avx2_pavg_b; break;
+      case llvm::Intrinsic::x86_avx512_pavg_w_512:
+        op = X86IntrinBinOp::avx512_pavg_w_512; break;
+      case llvm::Intrinsic::x86_avx512_pavg_b_512:
+        op = X86IntrinBinOp::avx512_pavg_b_512; break;
       case llvm::Intrinsic::x86_avx2_pshuf_b:
         op = X86IntrinBinOp::avx2_pshuf_b; break;
       case llvm::Intrinsic::x86_ssse3_pshuf_b_128:
