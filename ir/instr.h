@@ -1134,12 +1134,15 @@ public:
 
 
 class X86IntrinBinOp final : public Instr {
-  static constexpr unsigned numOfX86Intrinsics = 101;
+  static constexpr unsigned numOfX86Intrinsics = 104;
 public:
   enum Op {
   /* llvm.x86.sse2.pavg.w */        sse2_pavg_w,
-  /* llvm.x86.avx2.pavg.b */        avx2_pavg_b,
+  /* llvm.x86.sse2.pavg.b */        sse2_pavg_b,
   /* llvm.x86.avx2.pavg.w */        avx2_pavg_w,
+  /* llvm.x86.avx2.pavg.b */        avx2_pavg_b,
+  /* llvm.x86.avx512.pavg.b.512 */  avx512_pavg_b_512,
+  /* llvm.x86.avx512.pavg.w.512 */  avx512_pavg_w_512,
   /* llvm.x86.avx2.pshuf.b */       avx2_pshuf_b,
   /* llvm.x86.ssse2.pshuf.b.128 */  ssse3_pshuf_b_128,
   /* llvm.x86.mmx.padd.b */         mmx_padd_b,
@@ -1243,8 +1246,11 @@ public:
   // the shape of a vector is stored as <# of lanes, element bits>
   static constexpr std::array<std::pair<unsigned, unsigned>, numOfX86Intrinsics> shape_op0 = {
   /* sse2_pavg_w */        std::make_pair(8, 16),
-  /* avx2_pavg_b */        std::make_pair(32, 8),
+  /* sse2_pavg_b */        std::make_pair(16, 8),
   /* avx2_pavg_w */        std::make_pair(16, 16),
+  /* avx2_pavg_b */        std::make_pair(16, 8),
+  /* avx512_pavg_w_512 */  std::make_pair(32, 16),
+  /* avx512_pavg_b_512 */  std::make_pair(64, 8),
   /* avx2_pshuf_b */       std::make_pair(32, 8),
   /* ssse3_pshuf_b_128 */  std::make_pair(16, 8),
   /* mmx_padd_b */         std::make_pair(8, 8),
@@ -1346,8 +1352,11 @@ public:
   };
   static constexpr std::array<std::pair<unsigned, unsigned>, numOfX86Intrinsics> shape_op1 = {
   /* sse2_pavg_w */        std::make_pair(8, 16),
-  /* avx2_pavg_b */        std::make_pair(32, 8),
+  /* sse2_pavg_b */        std::make_pair(16, 8),
   /* avx2_pavg_w */        std::make_pair(16, 16),
+  /* avx2_pavg_b */        std::make_pair(16, 8),
+  /* avx512_pavg_w_512 */  std::make_pair(32, 16),
+  /* avx512_pavg_b_512 */  std::make_pair(64, 8),
   /* avx2_pshuf_b */       std::make_pair(32, 8),
   /* ssse3_pshuf_b_128 */  std::make_pair(16, 8),
   /* mmx_padd_b */         std::make_pair(8, 8),
@@ -1449,8 +1458,11 @@ public:
   };
   static constexpr std::array<std::pair<unsigned, unsigned>, numOfX86Intrinsics> shape_ret = {
   /* sse2_pavg_w */        std::make_pair(8, 16),
-  /* avx2_pavg_b */        std::make_pair(32, 8),
+  /* sse2_pavg_b */        std::make_pair(16, 8),
   /* avx2_pavg_w */        std::make_pair(16, 16),
+  /* avx2_pavg_b */        std::make_pair(16, 8),
+  /* avx512_pavg_w_512 */  std::make_pair(32, 16),
+  /* avx512_pavg_b_512 */  std::make_pair(64, 8),
   /* avx2_pshuf_b */       std::make_pair(32, 8),
   /* ssse3_pshuf_b_128 */  std::make_pair(16, 8),
   /* mmx_padd_b */         std::make_pair(8, 8),
