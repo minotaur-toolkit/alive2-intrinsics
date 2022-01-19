@@ -4771,11 +4771,20 @@ void X86IntrinBinOp::print(ostream &os) const {
   case sse2_pavg_w:
     str = "x86.sse2.pavg.w ";
     break;
-  case avx2_pavg_b:
-    str = "x86.avx2.pavg.b ";
+  case sse2_pavg_b:
+    str = "x86.sse2.pavg.b ";
     break;
   case avx2_pavg_w:
     str = "x86.avx2.pavg.w ";
+    break;
+  case avx2_pavg_b:
+    str = "x86.avx2.pavg.b ";
+    break;
+  case avx512_pavg_w_512:
+    str = "x86.avx512.pavg.w.512 ";
+    break;
+  case avx512_pavg_b_512:
+    str = "x86.avx512.pavg.b.512 ";
     break;
   case avx2_pshuf_b:
     str = "x86.avx2.pshuf.b ";
@@ -5179,8 +5188,11 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
   }
   // vertical
   case sse2_pavg_w:
-  case avx2_pavg_b:
+  case sse2_pavg_b:
   case avx2_pavg_w:
+  case avx2_pavg_b:
+  case avx512_pavg_w_512:
+  case avx512_pavg_b_512:
   case mmx_padd_b:
   case mmx_padd_w:
   case mmx_padd_d:
@@ -5221,15 +5233,15 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
     vector<StateValue> vals;
     function<expr(const expr&, const expr&)> fn;
     switch (op) {
-    case avx2_pavg_b:
-      fn = [&](auto a, auto b) -> expr {
-        return (a.zext(1) + b.zext(1) + expr::mkUInt(1, 9)).lshr(expr::mkUInt(1, 9)).trunc(8);
-      };
-      break;
     case sse2_pavg_w:
+    case sse2_pavg_b:
     case avx2_pavg_w:
+    case avx2_pavg_b:
+    case avx512_pavg_w_512:
+    case avx512_pavg_b_512:
       fn = [&](auto a, auto b) -> expr {
-        return (a.zext(1) + b.zext(1) + expr::mkUInt(1, 17)).lshr(expr::mkUInt(1, 17)).trunc(16);
+        unsigned bw = a.bits();
+        return (a.zext(1) + b.zext(1) + expr::mkUInt(1, bw + 1)).lshr(expr::mkUInt(1, bw + 1)).trunc(bw);
       };
       break;
     case mmx_padd_b:
