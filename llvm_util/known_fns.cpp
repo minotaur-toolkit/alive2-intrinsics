@@ -37,7 +37,8 @@ known_call(llvm::CallInst &i, const llvm::TargetLibraryInfo &TLI,
   if (!ty)
     RETURN_EXACT();
 
-  if (i.getCalledFunction()->getName().startswith("__sv_")) {
+  auto fn = i.getCalledFunction();
+  if (fn && fn->hasName() && fn->getName().startswith("__sv_")) {
     RETURN_VAL(
       make_unique<ReservedShuffleVector>(*ty, value_name(i), *args[0], *args[1], *args[2]));
   }
