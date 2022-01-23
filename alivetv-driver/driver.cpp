@@ -8,6 +8,7 @@
 #include "compareFunctions.cpp"
 
 #include "llvm/Support/TargetSelect.h"
+#include <utility>
 
 
 int main()
@@ -33,8 +34,11 @@ int main()
 	TheModule->setDataLayout(JITCompiler->getDataLayout());
 
 	// All intrinsic functions must be added below (probably in some for loop)	
-	llvm::Function* testFunc = llvm::Intrinsic::getDeclaration(TheModule.get(), llvm::Intrinsic::x86_sse2_pavg_w);
-	generateCallFunctionFromFunction(testFunc, "test2");
+	for(int i = 0; i < 11; ++i)
+	{
+		llvm::Function* testFunc = llvm::Intrinsic::getDeclaration(TheModule.get(), X86IntrinBinOp::intrin_id.at(i));
+		generateCallFunctionFromFunction(testFunc, "func" + std::to_string(i));
+	}
 	
 	//Debug printing for module
 	TheModule->print(errs(), nullptr);
@@ -47,15 +51,6 @@ int main()
  	  errs() << "Problem adding module to JIT " << JITadd << "\n";
 	  exit(-1);
 	}
-	auto funcLookup = JITCompiler->lookup("test2");
-
-	//Below executes if looking up JIT function failed
-	if (auto E = funcLookup.takeError()) {
-	  errs() << "Problem with JIT lookup " << toString(std::move(E)) << "\n";
-	  return -1;
-	}
-
-	auto* funcPointer = (__m128i(*)(__m128i, __m128i))funcLookup->getAddress();
 	
 	
 	switchToAliveContext();
@@ -95,15 +90,15 @@ int main()
 
 	//Defines the function pointer type that the function should use,
 	//ie auomatically chooses return, op1, and op2 types
-	/*
+	
 	typedef 
 		std::conditional<retBitSize != 512, std::conditional<retBitSize == 256, __m256i, __m128i>::type, __m512i>::type
 		(*opFunctionType)
 		(std::conditional<op0BitSize != 512, std::conditional<op0BitSize == 256, __m256i, __m128i>::type, __m512i>::type,
 		std::conditional<op1BitSize != 512, std::conditional<op1BitSize == 256, __m256i, __m128i>::type, __m512i>::type);
 
-	*/
-	//auto function = reinterpret_cast<opFunctionType>(return_function<op>());
+	
+	auto funcPointer = reinterpret_cast<opFunctionType>(JITCompiler->getFuncAddress("func6"));
 	//This jank might truly be real honest to god undefined behavior above, someone help	
 	
 

@@ -92,6 +92,18 @@ public:
   Expected<JITEvaluatedSymbol> lookup(StringRef Name) {
     return ES->lookup({&MainJD}, Mangle(Name.str()));
   }
+
+  JITTargetAddress getFuncAddress(std::string str)
+  {
+    auto funcLookup = lookup(str);
+
+    if (auto E = funcLookup.takeError()) {
+      errs() << "Problem with JIT lookup " << toString(std::move(E)) << "\n";
+      exit(-1);
+    }
+
+    return funcLookup->getAddress();
+  } 
 };
 
 } // end namespace orc

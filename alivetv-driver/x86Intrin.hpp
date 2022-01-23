@@ -287,10 +287,7 @@ public:
 	static_assert((bitwidth == 8) || (bitwidth == 16) || (bitwidth == 32) || (bitwidth == 64));
 	return bitwidth;
   }
-  template<X86IntrinBinOp::Op input>
-  constexpr llvm::Intrinsic::ID getIntrinsicID() {
-	return std::get<input>(X86IntrinBinOp::intrin_id);
-  }
+  
 
 inline __m128i mm_srl_epi16(__m128i a, __m128i b) { return _mm_srl_epi16(a, b); }
 inline __m128i mm_srl_epi32(__m128i a, __m128i b) { return _mm_srl_epi32(a, b); }
