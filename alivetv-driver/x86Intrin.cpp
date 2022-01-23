@@ -50,3 +50,16 @@ std::array<voidFunctionType, X86IntrinBinOp::return_intrinsic_count()> X86Intrin
 //  /* avx512_pslli_q_512 */ reinterpret_cast<voidFunctionType>(_mm512_sll_epi64),
 };
 
+std::array<llvm::Intrinsic::ID, X86IntrinBinOp::return_intrinsic_count()> X86IntrinBinOp::intrin_id = {
+  llvm::Intrinsic::x86_sse2_psrl_w,
+  llvm::Intrinsic::x86_sse2_psrl_d,
+  llvm::Intrinsic::x86_sse2_psrl_q,
+  llvm::Intrinsic::x86_avx2_psrl_w,
+  llvm::Intrinsic::x86_avx2_psrl_d,
+  llvm::Intrinsic::x86_avx2_psrl_q,
+  llvm::Intrinsic::x86_sse2_pavg_w,
+  llvm::Intrinsic::x86_avx2_pavg_b,
+  llvm::Intrinsic::x86_avx2_pavg_w,
+  llvm::Intrinsic::x86_avx2_pshuf_b,
+  llvm::Intrinsic::x86_ssse3_pshuf_b_128,
+};

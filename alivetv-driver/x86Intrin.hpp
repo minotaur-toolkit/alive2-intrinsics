@@ -1,6 +1,10 @@
 #include <array>
 #include <immintrin.h>
 
+#include "llvm/IR/Function.h"
+#include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/IntrinsicsX86.h"
+
 #ifndef X86INTRINBINOP_H
 #define X86INTRINBINOP_H
 
@@ -20,7 +24,7 @@ public:
   /* llvm.x86.avx2.pavg.b */        avx2_pavg_b,
   /* llvm.x86.avx2.pavg.w */        avx2_pavg_w,
   /* llvm.x86.avx2.pshuf.b */       avx2_pshuf_b,
-  /* llvm.x86.ssse2.pshuf.b.128 */  ssse3_pshuf_b_128,
+  /* llvm.x86.ssse3.pshuf.b.128 */  ssse3_pshuf_b_128,
   /* llvm.x86.mmx.padd.b */         mmx_padd_b,
   /* llvm.x86.mmx.padd.w */         mmx_padd_w,
   /* llvm.x86.mmx.padd.d */         mmx_padd_d,
@@ -208,7 +212,8 @@ public:
   /* avx512_pslli_q_512 */ std::make_pair(8, 64),
   };
   static std::array<voidFunctionType, numOfX86Intrinsics> func_ret;
-  
+  static std::array<llvm::Intrinsic::ID, numOfX86Intrinsics> intrin_id;
+
   static constexpr unsigned return_intrinsic_count()
   {
 	return numOfX86Intrinsics;
@@ -281,6 +286,10 @@ public:
 	
 	static_assert((bitwidth == 8) || (bitwidth == 16) || (bitwidth == 32) || (bitwidth == 64));
 	return bitwidth;
+  }
+  template<X86IntrinBinOp::Op input>
+  constexpr llvm::Intrinsic::ID getIntrinsicID() {
+	return std::get<input>(X86IntrinBinOp::intrin_id);
   }
 
 inline __m128i mm_srl_epi16(__m128i a, __m128i b) { return _mm_srl_epi16(a, b); }

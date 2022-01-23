@@ -108,6 +108,24 @@ VectorType* getVectorType(type input) {
 	return VectorType::get(intType, vectorLength, false);
 }
 
+
+template<unsigned bitwidth, unsigned lanes>
+VectorType* getVectorType() {
+	IntegerType* intType;
+        if constexpr (bitwidth == 64)
+                intType = IRint64_t;
+        else if constexpr (bitwidth == 32)
+                intType = IRint32_t;
+        else if constexpr (bitwidth == 16)
+                intType = IRint16_t;
+        else if constexpr (bitwidth == 8)
+                intType = IRint8_t;
+        else
+                throw std::invalid_argument("Bitwidth must be powers of 2 between 2 and 64");
+
+	return VectorType::get(intType, lanes, false);
+}
+
 template<unsigned bitwidthOp1, unsigned bitwidthOp2, typename typeOp1, typename typeOp2>
 Function* generateCallFunctionWithVarInput(typeOp1 input1, typeOp2 input2, Function* func, std::string name) {
 	std::unique_ptr<VariableExprAST> vecVarOp1 = std::make_unique<VariableExprAST>("i0");
@@ -131,5 +149,67 @@ Function* generateCallFunctionWithVarInput(typeOp1 input1, typeOp2 input2, Funct
 	std::make_unique<FunctionAST>(std::move(proto), std::move(callExpr));
 
 	return returnFunction->codegen();
+}
+
+
+template<unsigned bitwidthOp1, unsigned bitwidthOp2, unsigned lanesOp1, unsigned lanesOp2>
+Function* generateCallFunctionWithVarInput(Function* func, std::string name) {
+	std::unique_ptr<VariableExprAST> vecVarOp1 = std::make_unique<VariableExprAST>("i0");
+	std::unique_ptr<VariableExprAST> vecVarOp2 = std::make_unique<VariableExprAST>("i1");
+	
+	std::vector<std::unique_ptr<ExprAST>> callVec;
+	callVec.push_back(std::move(vecVarOp1));
+	callVec.push_back(std::move(vecVarOp2));
+
+	std::unique_ptr<CallExprAST> callExpr =
+	std::make_unique<CallExprAST>(func, std::move(callVec));
+
+	// Get input variable types
+	VectorType* vecTypeOp1 = getVectorType<bitwidthOp1, lanesOp1>();
+	VectorType* vecTypeOp2 = getVectorType<bitwidthOp2, lanesOp2>();
+
+	std::unique_ptr<PrototypeAST> proto = 
+	std::make_unique<PrototypeAST>(name, func->getReturnType(), std::vector<Type*>({vecTypeOp1, vecTypeOp2}));
+
+	std::unique_ptr<FunctionAST> returnFunction =
+	std::make_unique<FunctionAST>(std::move(proto), std::move(callExpr));
+
+	return returnFunction->codegen();
+}
+
+Function* generateCallFunctionFromFunction(Function* func, std::string name) {
+	// Extract the intrinsics arguments
+	std::vector<Argument*> argumentList;
+	for(auto i = func->arg_begin(); i != func->arg_end(); argumentList.push_back(i), ++i);
+	
+	// Generate the vector that will store the variable(s)
+	std::vector<std::unique_ptr<ExprAST>> callVec;
+
+	// Generate the number of input variables for the LLVM IR
+	for(long unsigned i = 0; i < argumentList.size(); ++i)
+	{
+		std::string varName = "i" + std::to_string(i);
+		std::unique_ptr<VariableExprAST> vecVarOpi = std::make_unique<VariableExprAST>(varName);
+		callVec.push_back(std::move(vecVarOpi));
+	}
+	std::unique_ptr<CallExprAST> callExpr =
+	std::make_unique<CallExprAST>(func, std::move(callVec));
+
+	// Get input variable types
+	std::vector<Type*> argumentListTypes;
+	for(const auto* arg : argumentList)
+		argumentListTypes.push_back(arg->getType());
+
+	// Create function prototype
+	std::unique_ptr<PrototypeAST> proto =
+	std::make_unique<PrototypeAST>(name, func->getReturnType(), argumentListTypes);
+
+	// Now the function proper
+	std::unique_ptr<FunctionAST> returnFunction =
+	std::make_unique<FunctionAST>(std::move(proto), std::move(callExpr));
+
+	return returnFunction->codegen();
+	
+	return func;
 }
 #endif

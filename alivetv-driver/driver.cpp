@@ -7,84 +7,8 @@
 
 #include "compareFunctions.cpp"
 
-
 #include "llvm/Support/TargetSelect.h"
 
-/*
-int main() {
-	InitializeModule();
-	
-	*
-	 * Code tests four things. Creates four functions.
-	 * First function @src takes one i32 input and always returns i32 32
-	 * Second function @tgt is defined the same as the first function
-	 * Third function @vec takes no arguments and returns <4 x i32> with 32 i32 values
-	 * Then, code declares an x86 intrinsic
-	 * The final function @call takes no arguments, and returns a call to the intrinsic with constant values
-	 *
-
-
-	//Start function 1
-	std::unique_ptr<IntExprAST> expr = std::make_unique<IntExprAST>(32, IRint32_t);
-	std::unique_ptr<PrototypeAST> proto = std::make_unique<PrototypeAST>("src", IRint32_t, std::vector<Type*>({IRint32_t}));
-	
-	FunctionAST function(std::move(proto), std::move(expr));
-	llvm::Function* func1 = function.codegen();
-	//End function 1
-
-
-	//Start function 2
-	expr = std::make_unique<IntExprAST>(32, IRint32_t);
-	proto = std::make_unique<PrototypeAST>("tgt", IRint32_t, std::vector<Type*>({IRint32_t}));
-
-	FunctionAST function2(std::move(proto), std::move(expr));
-	llvm::Function* func2 = function2.codegen();
-	//End function 2
-
-
-	//Start function 3
-	__m128i vals = vectorRandomizer<32>(vals);
-	
-	llvm::Function* func3 = generateReturnFunction<32>(vals, "vec");
-	
-	func3->eraseFromParent();
-	__m256i valsTest = vectorRandomizer<16>(valsTest);
-	
-	func3 = generateReturnFunction<16>(valsTest, "vec");
-
-	//End function 3
-
-	//Declare the intrinsic to be used
-	llvm::Function* intrinsicFunction = llvm::Intrinsic::getDeclaration(TheModule.get(), llvm::Intrinsic::x86_sse2_psrl_d);
-
-	//Start function 4
-	__m128i vals2 = vectorRandomizer<32>(vals);
-	__m128i vals3 = vectorRandomizer<32>(vals);
-
-	llvm::Function* func4 = generateCallFunction<32, 32>(vals2, vals3, intrinsicFunction, "call");
-	
-	//End function 4
-	
-
-
-	//Print the module to see the LLVM IR currently created
-	TheModule->print(errs(), nullptr);
-	
-	if(report_dir_created);	//Error about unsused variable, TODO: fix
-	
-	//Set up TLI for Alive2
-	llvm::Triple targetTriple(TheModule.get()->getTargetTriple());
-	llvm::TargetLibraryInfoWrapperPass TLI(targetTriple);
-	
-	//Set up output stream for Alive2 info, then set up smt
-	out = &std::cout;
-	smt_init.emplace();
-
-	//Compare functions
-	compareFunctions(*func1, *func2, TLI);
-	compareFunctions(*func3, *func4, TLI);
-}
-*/
 
 int main()
 {		
@@ -108,16 +32,11 @@ int main()
 	//Set data layout of module
 	TheModule->setDataLayout(JITCompiler->getDataLayout());
 
-	//TESTING BELOW	
+	// All intrinsic functions must be added below (probably in some for loop)	
 	llvm::Function* testFunc = llvm::Intrinsic::getDeclaration(TheModule.get(), llvm::Intrinsic::x86_sse2_pavg_w);
-	__m128i valsTest = vectorRandomizer<16>(valsTest);
-	__m128i valsTest2 = vectorRandomizer<16, 40>(valsTest2);
+	generateCallFunctionFromFunction(testFunc, "test2");
 	
-	generateCallFunction<16, 16>(valsTest, valsTest2, testFunc, "test");
-
-	//Testing for variable inputs
-	generateCallFunctionWithVarInput<16, 16>(valsTest, valsTest2, testFunc, "test2");
-
+	//Debug printing for module
 	TheModule->print(errs(), nullptr);
 	
 	//Add intrinsic module to JIT
@@ -126,6 +45,7 @@ int main()
 	//Check if adding module to JIT errored
 	if(JITadd) {
  	  errs() << "Problem adding module to JIT " << JITadd << "\n";
+	  exit(-1);
 	}
 	auto funcLookup = JITCompiler->lookup("test2");
 
@@ -137,11 +57,6 @@ int main()
 
 	auto* funcPointer = (__m128i(*)(__m128i, __m128i))funcLookup->getAddress();
 	
-	printVec<16>(valsTest);
-	printVec<16>(valsTest2);
-	
-	__m128i valsRetTest = funcPointer(valsTest, valsTest2);
-	printVec<16>(valsRetTest);
 	
 	switchToAliveContext();
 
@@ -158,7 +73,7 @@ int main()
 	//(with the exception of the ranges on vectorRandomizer in the for loop)
 	constexpr X86IntrinBinOp::Op op = X86IntrinBinOp::sse2_pavg_w;
 	
-	constexpr unsigned timesToLoop = 1;	
+	constexpr unsigned timesToLoop = 10000;	
 
 	//Bitsize is the number of bits in the entire vector
 	constexpr unsigned op0BitSize = bitSizeOp0<op>();
@@ -180,16 +95,17 @@ int main()
 
 	//Defines the function pointer type that the function should use,
 	//ie auomatically chooses return, op1, and op2 types
+	/*
 	typedef 
 		std::conditional<retBitSize != 512, std::conditional<retBitSize == 256, __m256i, __m128i>::type, __m512i>::type
 		(*opFunctionType)
 		(std::conditional<op0BitSize != 512, std::conditional<op0BitSize == 256, __m256i, __m128i>::type, __m512i>::type,
 		std::conditional<op1BitSize != 512, std::conditional<op1BitSize == 256, __m256i, __m128i>::type, __m512i>::type);
 
-
-	auto function = reinterpret_cast<opFunctionType>(return_function<op>());
+	*/
+	//auto function = reinterpret_cast<opFunctionType>(return_function<op>());
 	//This jank might truly be real honest to god undefined behavior above, someone help	
-
+	
 
 	//Declare the intrinsic to be used
 	llvm::Function* intrinsicFunction = llvm::Intrinsic::getDeclaration(TheModule.get(), llvm::Intrinsic::x86_sse2_pavg_w);
@@ -199,7 +115,7 @@ int main()
 		vals = vectorRandomizer<op0Bitwidth>(vals);
 		vals2 = vectorRandomizer<op1Bitwidth, 40>(vals2);
 		
-		retVec = function(vals, vals2);
+		retVec = funcPointer(vals, vals2);
 		
 		llvm::Function* tgtFunc = generateReturnFunction<retBitwidth>(retVec, "tgt");
 		llvm::Function* srcFunc = generateCallFunction<op0Bitwidth, op1Bitwidth>(vals, vals2, intrinsicFunction, "src");
