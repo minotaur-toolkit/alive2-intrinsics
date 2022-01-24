@@ -1643,6 +1643,7 @@ public:
     : Instr(type, move(name)), a(&a), b(&b), op(op) {}
   std::vector<Value*> operands() const override;
   void rauw(const Value &what, Value &with) override;
+  static std::string getOpName(Op op);
   void print(std::ostream &os) const override;
   StateValue toSMT(State &s) const override;
   smt::expr getTypeConstraints(const Function &f) const override;
