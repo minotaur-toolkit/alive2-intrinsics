@@ -4833,322 +4833,113 @@ void X86IntrinBinOp::rauw(const Value &what, Value &with) {
 }
 
 string X86IntrinBinOp::getOpName(Op op) {
-  const char *str = nullptr;
   switch (op) {
-  case sse2_pavg_w:
-    str = "x86.sse2.pavg.w";
-    break;
-  case sse2_pavg_b:
-    str = "x86.sse2.pavg.b";
-    break;
-  case avx2_pavg_w:
-    str = "x86.avx2.pavg.w";
-    break;
-  case avx2_pavg_b:
-    str = "x86.avx2.pavg.b";
-    break;
-  case avx512_pavg_w_512:
-    str = "x86.avx512.pavg.w.512";
-    break;
-  case avx512_pavg_b_512:
-    str = "x86.avx512.pavg.b.512";
-    break;
-  case avx2_pshuf_b:
-    str = "x86.avx2.pshuf.b";
-    break;
-  case ssse3_pshuf_b_128:
-    str = "x86.ssse3.pshuf.b.128";
-    break;
-  case mmx_padd_b:
-    str = "x86.mmx.padd.b";
-    break;
-  case mmx_padd_w:
-    str = "x86.mmx.padd.w";
-    break;
-  case mmx_padd_d:
-    str = "x86.mmx.padd.d";
-    break;
-  case mmx_punpckhbw:
-    str = "x86.mmx.punpckhbw";
-    break;
-  case mmx_punpckhwd:
-    str = "x86.mmx.punpckhwd";
-    break;
-  case mmx_punpckhdq:
-    str = "x86.mmx.punpckhdq";
-    break;
-  case mmx_punpcklbw:
-    str = "x86.mmx.punpcklbw";
-    break;
-  case mmx_punpcklwd:
-    str = "x86.mmx.punpcklwd";
-    break;
-  case mmx_punpckldq:
-    str = "x86.mmx.punpckldq";
-    break;
-  case sse2_psrl_w:
-    str = "x86.sse2.psrl.w";
-    break;
-  case sse2_psrl_d:
-    str = "x86.sse2.psrl.d";
-    break;
-  case sse2_psrl_q:
-    str = "x86.sse2.psrl.q";
-    break;
-  case avx2_psrl_w:
-    str = "x86.avx2.psrl.w";
-    break;
-  case avx2_psrl_d:
-    str = "x86.avx2.psrl.d";
-    break;
-  case avx2_psrl_q:
-    str = "x86.avx2.psrl.q";
-    break;
-  case avx512_psrl_w_512:
-    str = "x86.avx512.psrl.w.512";
-    break;
-  case avx512_psrl_d_512:
-    str = "x86.avx512.psrl.d.512";
-    break;
-  case avx512_psrl_q_512:
-    str = "x86.avx512.psrl.q.512";
-    break;
-  case sse2_psrli_w:
-    str = "x86.sse2.psrli.w";
-    break;
-  case sse2_psrli_d:
-    str = "x86.sse2.psrli.d";
-    break;
-  case sse2_psrli_q:
-    str = "x86.sse2.psrli.q";
-    break;
-  case avx2_psrli_w:
-    str = "x86.avx2.psrli.w";
-    break;
-  case avx2_psrli_d:
-    str = "x86.avx2.psrli.d";
-    break;
-  case avx2_psrli_q:
-    str = "x86.avx2.psrli.q";
-    break;
-  case avx512_psrli_w_512:
-    str = "x86.avx512.psrli.w.512";
-    break;
-  case avx512_psrli_d_512:
-    str = "x86.avx512.psrli.d.512";
-    break;
-  case avx512_psrli_q_512:
-    str = "x86.avx512.psrli.q.512";
-    break;
-  case avx2_psrlv_d:
-    str = "x86.avx2.psrlv.d";
-    break;
-  case avx2_psrlv_d_256:
-    str = "x86.avx2.psrlv.d.256";
-    break;
-  case avx2_psrlv_q:
-    str = "x86.avx2.psrlv.q";
-    break;
-  case avx2_psrlv_q_256:
-    str = "x86.avx2.psrlv.q.256";
-    break;
-  case avx512_psrlv_d_512:
-    str = "x86.avx512.psrlv.d.512";
-    break;
-  case avx512_psrlv_q_512:
-    str = "x86.avx512.psrlv.q.512";
-    break;
-  case avx512_psrlv_w_128:
-    str = "x86.avx512.psrlv.w.128";
-    break;
-  case avx512_psrlv_w_256:
-    str = "x86.avx512.psrlv.w.256";
-    break;
-  case avx512_psrlv_w_512:
-    str = "x86.avx512.psrlv.w.512";
-    break;
-  case sse2_psra_w:
-    str = "x86.sse2.psra.w";
-    break;
-  case sse2_psra_d:
-    str = "x86.sse2.psra.d";
-    break;
-  case avx2_psra_w:
-    str = "x86.avx2.psra.w";
-    break;
-  case avx2_psra_d:
-    str = "x86.avx2.psra.d";
-    break;
-  case avx512_psra_q_128:
-    str = "x86.avx512.psra.q.128";
-    break;
-  case avx512_psra_q_256:
-    str = "x86.avx512.psra.q.256";
-    break;
-  case avx512_psra_w_512:
-    str = "x86.avx512.psra.w.512";
-    break;
-  case avx512_psra_d_512:
-    str = "x86.avx512.psra.d.512";
-    break;
-  case avx512_psra_q_512:
-    str = "x86.avx512.psra.q.512";
-    break;
-  case sse2_psrai_w:
-    str = "x86.sse2.psrai.w";
-    break;
-  case sse2_psrai_d:
-    str = "x86.sse2.psrai.d";
-    break;
-  case avx2_psrai_w:
-    str = "x86.avx2.psrai.w";
-    break;
-  case avx2_psrai_d:
-    str = "x86.avx2.psrai.d";
-    break;
-  case avx512_psrai_w_512:
-    str = "x86.avx512.psrai.w.512";
-    break;
-  case avx512_psrai_d_512:
-    str = "x86.avx512.psrai.d.512";
-    break;
-  case avx512_psrai_q_128:
-    str = "x86.avx512.psrai.q.128";
-    break;
-  case avx512_psrai_q_256:
-    str = "x86.avx512.psrai.q.256";
-    break;
-  case avx512_psrai_q_512:
-    str = "x86.avx512.psrai.q.512";
-    break;
-  case avx2_psrav_d:
-    str = "x86.avx2.psrav.d";
-    break;
-  case avx2_psrav_d_256:
-    str = "x86.avx2.psrav.d.256";
-    break;
-  case avx512_psrav_d_512:
-    str = "x86.avx512.psrav.d.512";
-    break;
-  case avx512_psrav_q_128:
-    str = "x86.avx512.psrav.q.128";
-    break;
-  case avx512_psrav_q_256:
-    str = "x86.avx512.psrav.q.256";
-    break;
-  case avx512_psrav_q_512:
-    str = "x86.avx512.psrav.q.512";
-    break;
-  case avx512_psrav_w_128:
-    str = "x86.avx512.psrav.w.128";
-    break;
-  case avx512_psrav_w_256:
-    str = "x86.avx512.psrav.w.256";
-    break;
-  case avx512_psrav_w_512:
-    str = "x86.avx512.psrav.w.512";
-    break;
-  case sse2_psll_w:
-    str = "x86.sse2.psll.w";
-    break;
-  case sse2_psll_d:
-    str = "x86.sse2.psll.d";
-    break;
-  case sse2_psll_q:
-    str = "x86.sse2.psll.q";
-    break;
-  case avx2_psll_w:
-    str = "x86.avx2.psll.w";
-    break;
-  case avx2_psll_d:
-    str = "x86.avx2.psll.d";
-    break;
-  case avx2_psll_q:
-    str = "x86.avx2.psll.q";
-    break;
-  case avx512_psll_w_512:
-    str = "x86.avx512.psll.w.512";
-    break;
-  case avx512_psll_d_512:
-    str = "x86.avx512.psll.d.512";
-    break;
-  case avx512_psll_q_512:
-    str = "x86.avx512.psll.q.512";
-    break;
-  case sse2_pslli_w:
-    str = "x86.sse2.pslli.w";
-    break;
-  case sse2_pslli_d:
-    str = "x86.sse2.pslli.d";
-    break;
-  case sse2_pslli_q:
-    str = "x86.sse2.pslli.q";
-    break;
-  case avx2_pslli_w:
-    str = "x86.avx2.pslli.w";
-    break;
-  case avx2_pslli_d:
-    str = "x86.avx2.pslli.d";
-    break;
-  case avx2_pslli_q:
-    str = "x86.avx2.pslli.q";
-    break;
-  case avx512_pslli_w_512:
-    str = "x86.avx512.pslli.w.512";
-    break;
-  case avx512_pslli_d_512:
-    str = "x86.avx512.pslli.d.512";
-    break;
-  case avx512_pslli_q_512:
-    str = "x86.avx512.pslli.q.512";
-    break;
-  case avx2_psllv_d:
-    str = "x86.avx2.psllv.d";
-    break;
-  case avx2_psllv_d_256:
-    str = "x86.avx2.psllv.d.256";
-    break;
-  case avx2_psllv_q:
-    str = "x86.avx2.psllv.q";
-    break;
-  case avx2_psllv_q_256:
-    str = "x86.avx2.psllv.q.256";
-    break;
-  case avx512_psllv_d_512:
-    str = "x86.avx512.psllv.d.512";
-    break;
-  case avx512_psllv_q_512:
-    str = "x86.avx512.psllv.q.512";
-    break;
-  case avx512_psllv_w_128:
-    str = "x86.avx512.psllv.w.128";
-    break;
-  case avx512_psllv_w_256:
-    str = "x86.avx512.psllv.w.256";
-    break;
-  case avx512_psllv_w_512:
-    str = "x86.avx512.psllv.w.512";
-    break;
-  case ssse3_psign_b_128:
-    str = "x86.ssse3.psign.b.128";
-    break;
-  case ssse3_psign_w_128:
-    str = "x86.ssse3.psign.w.128";
-    break;
-  case ssse3_psign_d_128:
-    str = "x86.ssse3.psign.d.128";
-    break;
-  case avx2_psign_b:
-    str = "x86.avx2.psign.b";
-    break;
-  case avx2_psign_w:
-    str = "x86.avx2.psign.w";
-    break;
-  case avx2_psign_d:
-    str = "x86.avx2.psign.d";
-    break;
+  case sse2_pavg_w:        return "x86.sse2.pavg.w";
+  case sse2_pavg_b:        return "x86.sse2.pavg.b";
+  case avx2_pavg_w:        return "x86.avx2.pavg.w";
+  case avx2_pavg_b:        return "x86.avx2.pavg.b";
+  case avx512_pavg_w_512:  return "x86.avx512.pavg.w.512";
+  case avx512_pavg_b_512:  return "x86.avx512.pavg.b.512";
+  case avx2_pshuf_b:       return "x86.avx2.pshuf.b";
+  case ssse3_pshuf_b_128:  return "x86.ssse3.pshuf.b.128";
+  case mmx_padd_b:         return "x86.mmx.padd.b";
+  case mmx_padd_w:         return "x86.mmx.padd.w";
+  case mmx_padd_d:         return "x86.mmx.padd.d";
+  case mmx_punpckhbw:      return "x86.mmx.punpckhbw";
+  case mmx_punpckhwd:      return "x86.mmx.punpckhwd";
+  case mmx_punpckhdq:      return "x86.mmx.punpckhdq";
+  case mmx_punpcklbw:      return "x86.mmx.punpcklbw";
+  case mmx_punpcklwd:      return "x86.mmx.punpcklwd";
+  case mmx_punpckldq:      return "x86.mmx.punpckldq";
+  case sse2_psrl_w:        return "x86.sse2.psrl.w";
+  case sse2_psrl_d:        return "x86.sse2.psrl.d";
+  case sse2_psrl_q:        return "x86.sse2.psrl.q";
+  case avx2_psrl_w:        return "x86.avx2.psrl.w";
+  case avx2_psrl_d:        return "x86.avx2.psrl.d";
+  case avx2_psrl_q:        return "x86.avx2.psrl.q";
+  case avx512_psrl_w_512:  return "x86.avx512.psrl.w.512";
+  case avx512_psrl_d_512:  return "x86.avx512.psrl.d.512";
+  case avx512_psrl_q_512:  return "x86.avx512.psrl.q.512";
+  case sse2_psrli_w:       return "x86.sse2.psrli.w";
+  case sse2_psrli_d:       return "x86.sse2.psrli.d";
+  case sse2_psrli_q:       return "x86.sse2.psrli.q";
+  case avx2_psrli_w:       return "x86.avx2.psrli.w";
+  case avx2_psrli_d:       return "x86.avx2.psrli.d";
+  case avx2_psrli_q:       return "x86.avx2.psrli.q";
+  case avx512_psrli_w_512: return "x86.avx512.psrli.w.512";
+  case avx512_psrli_d_512: return "x86.avx512.psrli.d.512";
+  case avx512_psrli_q_512: return "x86.avx512.psrli.q.512";
+  case avx2_psrlv_d:       return "x86.avx2.psrlv.d";
+  case avx2_psrlv_d_256:   return "x86.avx2.psrlv.d.256";
+  case avx2_psrlv_q:       return "x86.avx2.psrlv.q";
+  case avx2_psrlv_q_256:   return "x86.avx2.psrlv.q.256";
+  case avx512_psrlv_d_512: return "x86.avx512.psrlv.d.512";
+  case avx512_psrlv_q_512: return "x86.avx512.psrlv.q.512";
+  case avx512_psrlv_w_128: return "x86.avx512.psrlv.w.128";
+  case avx512_psrlv_w_256: return "x86.avx512.psrlv.w.256";
+  case avx512_psrlv_w_512: return "x86.avx512.psrlv.w.512";
+  case sse2_psra_w:        return "x86.sse2.psra.w";
+  case sse2_psra_d:        return "x86.sse2.psra.d";
+  case avx2_psra_w:        return "x86.avx2.psra.w";
+  case avx2_psra_d:        return "x86.avx2.psra.d";
+  case avx512_psra_q_128:  return "x86.avx512.psra.q.128";
+  case avx512_psra_q_256:  return "x86.avx512.psra.q.256";
+  case avx512_psra_w_512:  return "x86.avx512.psra.w.512";
+  case avx512_psra_d_512:  return "x86.avx512.psra.d.512";
+  case avx512_psra_q_512:  return "x86.avx512.psra.q.512";
+  case sse2_psrai_w:       return "x86.sse2.psrai.w";
+  case sse2_psrai_d:       return "x86.sse2.psrai.d";
+  case avx2_psrai_w:       return "x86.avx2.psrai.w";
+  case avx2_psrai_d:       return "x86.avx2.psrai.d";
+  case avx512_psrai_w_512: return "x86.avx512.psrai.w.512";
+  case avx512_psrai_d_512: return "x86.avx512.psrai.d.512";
+  case avx512_psrai_q_128: return "x86.avx512.psrai.q.128";
+  case avx512_psrai_q_256: return "x86.avx512.psrai.q.256";
+  case avx512_psrai_q_512: return "x86.avx512.psrai.q.512";
+  case avx2_psrav_d:       return "x86.avx2.psrav.d";
+  case avx2_psrav_d_256:   return "x86.avx2.psrav.d.256";
+  case avx512_psrav_d_512: return "x86.avx512.psrav.d.512";
+  case avx512_psrav_q_128: return "x86.avx512.psrav.q.128";
+  case avx512_psrav_q_256: return "x86.avx512.psrav.q.256";
+  case avx512_psrav_q_512: return "x86.avx512.psrav.q.512";
+  case avx512_psrav_w_128: return "x86.avx512.psrav.w.128";
+  case avx512_psrav_w_256: return "x86.avx512.psrav.w.256";
+  case avx512_psrav_w_512: return "x86.avx512.psrav.w.512";
+  case sse2_psll_w:        return "x86.sse2.psll.w";
+  case sse2_psll_d:        return "x86.sse2.psll.d";
+  case sse2_psll_q:        return "x86.sse2.psll.q";
+  case avx2_psll_w:        return "x86.avx2.psll.w";
+  case avx2_psll_d:        return "x86.avx2.psll.d";
+  case avx2_psll_q:        return "x86.avx2.psll.q";
+  case avx512_psll_w_512:  return "x86.avx512.psll.w.512";
+  case avx512_psll_d_512:  return "x86.avx512.psll.d.512";
+  case avx512_psll_q_512:  return "x86.avx512.psll.q.512";
+  case sse2_pslli_w:       return "x86.sse2.pslli.w";
+  case sse2_pslli_d:       return "x86.sse2.pslli.d";
+  case sse2_pslli_q:       return "x86.sse2.pslli.q";
+  case avx2_pslli_w:       return "x86.avx2.pslli.w";
+  case avx2_pslli_d:       return "x86.avx2.pslli.d";
+  case avx2_pslli_q:       return "x86.avx2.pslli.q";
+  case avx512_pslli_w_512: return "x86.avx512.pslli.w.512";
+  case avx512_pslli_d_512: return "x86.avx512.pslli.d.512";
+  case avx512_pslli_q_512: return "x86.avx512.pslli.q.512";
+  case avx2_psllv_d:       return "x86.avx2.psllv.d";
+  case avx2_psllv_d_256:   return "x86.avx2.psllv.d.256";
+  case avx2_psllv_q:       return "x86.avx2.psllv.q";
+  case avx2_psllv_q_256:   return "x86.avx2.psllv.q.256";
+  case avx512_psllv_d_512: return "x86.avx512.psllv.d.512";
+  case avx512_psllv_q_512: return "x86.avx512.psllv.q.512";
+  case avx512_psllv_w_128: return "x86.avx512.psllv.w.128";
+  case avx512_psllv_w_256: return "x86.avx512.psllv.w.256";
+  case avx512_psllv_w_512: return "x86.avx512.psllv.w.512";
+  case ssse3_psign_b_128:  return "x86.ssse3.psign.b.128";
+  case ssse3_psign_w_128:  return "x86.ssse3.psign.w.128";
+  case ssse3_psign_d_128:  return "x86.ssse3.psign.d.128";
+  case avx2_psign_b:       return "x86.avx2.psign.b";
+  case avx2_psign_w:       return "x86.avx2.psign.w";
+  case avx2_psign_d:       return "x86.avx2.psign.d";
   }
-  return str;
+  UNREACHABLE();
 }
 
 void X86IntrinBinOp::print(ostream &os) const {
