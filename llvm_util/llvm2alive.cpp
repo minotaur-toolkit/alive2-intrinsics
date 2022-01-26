@@ -1413,6 +1413,24 @@ public:
         op = X86IntrinBinOp::avx512_psrav_w_256; break;
       case llvm::Intrinsic::x86_avx512_psrav_w_512:
         op = X86IntrinBinOp::avx512_psrav_w_512; break;
+      case llvm::Intrinsic::x86_sse2_psll_w:
+        op = X86IntrinBinOp::sse2_psll_w; break;
+      case llvm::Intrinsic::x86_sse2_psll_d:
+        op = X86IntrinBinOp::sse2_psll_d; break;
+      case llvm::Intrinsic::x86_sse2_psll_q:
+        op = X86IntrinBinOp::sse2_psll_q; break;
+      case llvm::Intrinsic::x86_avx2_psll_w:
+        op = X86IntrinBinOp::avx2_psll_w; break;
+      case llvm::Intrinsic::x86_avx2_psll_d:
+        op = X86IntrinBinOp::avx2_psll_d; break;
+      case llvm::Intrinsic::x86_avx2_psll_q:
+        op = X86IntrinBinOp::avx2_psll_q; break;
+      case llvm::Intrinsic::x86_avx512_psll_w_512:
+        op = X86IntrinBinOp::avx512_psll_w_512; break;
+      case llvm::Intrinsic::x86_avx512_psll_d_512:
+        op = X86IntrinBinOp::avx512_psll_d_512; break;
+      case llvm::Intrinsic::x86_avx512_psll_q_512:
+        op = X86IntrinBinOp::avx512_psll_q_512; break;
       case llvm::Intrinsic::x86_sse2_pslli_w:
         op = X86IntrinBinOp::sse2_pslli_w; break;
       case llvm::Intrinsic::x86_sse2_pslli_d:
