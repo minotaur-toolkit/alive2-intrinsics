@@ -4104,7 +4104,9 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
     case avx512_psrl_d_512:
     case avx512_psrl_q_512:
       fn = [&](auto a, auto b) -> expr {
-        return a.lshr(b);
+        return expr::mkIf(shift_v.uge(expr::mkUInt(elem_bw, 64)),
+                          expr::mkUInt(0, elem_bw),
+                          a.lshr(b));
       };
       break;
     case sse2_psra_w:
@@ -4117,7 +4119,11 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
     case avx512_psra_d_512:
     case avx512_psra_q_512:
       fn = [&](auto a, auto b) -> expr {
-        return a.ashr(b);
+        return expr::mkIf(shift_v.uge(expr::mkUInt(elem_bw, 64)),
+                          expr::mkIf(a.isNegative(),
+                                     expr::mkUInt(-1, elem_bw),
+                                     expr::mkUInt( 0, elem_bw)),
+                          a.ashr(b));
       };
       break;
     case sse2_psll_w:
@@ -4130,18 +4136,17 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
     case avx512_psll_d_512:
     case avx512_psll_q_512:
       fn = [&](auto a, auto b) -> expr {
-        return a << b;
+        return expr::mkIf(shift_v.uge(expr::mkUInt(elem_bw, 64)),
+                          expr::mkUInt(0, elem_bw),
+                          a << b);
       };
       break;
     default: UNREACHABLE();
     }
     for (unsigned i = 0, e = aty->numElementsConst(); i != e; ++i) {
       auto ai = aty->extract(av, i);
-      // ret_i.v = (ite shift.v >= elem_bw, 0, a_i.v >> shift.v)
-      expr v = expr::mkIf(shift_v.uge(expr::mkUInt(elem_bw, 64)),
-                          expr::mkUInt(0, elem_bw),
-                          fn(ai.value, shift_v.trunc(elem_bw)));
-      vals.emplace_back(move(v), shift_np && ai.non_poison);
+      expr shift = fn(ai.value, shift_v.trunc(elem_bw));
+      vals.emplace_back(move(shift), shift_np && ai.non_poison);
     }
     return rty->aggregateVals(vals);
   }
@@ -4251,7 +4256,9 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
       fn = [&](auto a, auto b) -> expr {
         unsigned bw = a.bits();
         return expr::mkIf(b.uge(expr::mkUInt(bw, bw)),
-                          expr::mkUInt(0, bw),
+                          expr::mkIf(a.isNegative(),
+                                     expr::mkUInt(-1, bw),
+                                     expr::mkUInt( 0, bw)),
                           a.ashr(b));
       };
       break;
