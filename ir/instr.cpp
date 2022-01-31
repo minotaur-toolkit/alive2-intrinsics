@@ -4433,6 +4433,12 @@ string X86IntrinBinOp::getOpName(Op op) {
   case avx2_phadd_w:       return "x86.avx2.phadd.w";
   case avx2_phadd_d:       return "x86.avx2.phadd.d";
   case avx2_phadd_sw:      return "x86.avx2.phadd.sw";
+  case ssse3_phsub_w_128:  return "x86.ssse3.phsub.w.128";
+  case ssse3_phsub_d_128:  return "x86.ssse3.phsub.d.128";
+  case ssse3_phsub_sw_128: return "x86.ssse3.phsub.sw.128";
+  case avx2_phsub_w:       return "x86.avx2.phsub.w";
+  case avx2_phsub_d:       return "x86.avx2.phsub.d";
+  case avx2_phsub_sw:      return "x86.avx2.phsub.sw";
   }
   UNREACHABLE();
 }
@@ -4747,7 +4753,13 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
   case ssse3_phadd_sw_128:
   case avx2_phadd_w:
   case avx2_phadd_d:
-  case avx2_phadd_sw: {
+  case avx2_phadd_sw:
+  case ssse3_phsub_w_128:
+  case ssse3_phsub_d_128:
+  case ssse3_phsub_sw_128:
+  case avx2_phsub_w:
+  case avx2_phsub_d:
+  case avx2_phsub_sw: {
     vector<StateValue> vals;
     unsigned laneCount = shape_ret[op].first;
     function<expr(const expr&, const expr&)> fn;
@@ -4764,6 +4776,20 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
     case avx2_phadd_sw:
       fn = [&](auto a, auto b) -> expr {
         return a.sadd_sat(b);
+      };
+      break;
+    case ssse3_phsub_w_128:
+    case ssse3_phsub_d_128:
+    case avx2_phsub_w:
+    case avx2_phsub_d:
+      fn = [&](auto a, auto b) -> expr {
+        return a - b;
+      };
+      break;
+    case ssse3_phsub_sw_128:
+    case avx2_phsub_sw:
+      fn = [&](auto a, auto b) -> expr {
+        return a.ssub_sat(b);
       };
       break;
     default: UNREACHABLE();
