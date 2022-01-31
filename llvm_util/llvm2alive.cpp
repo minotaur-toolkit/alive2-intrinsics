@@ -2,6 +2,7 @@
 // Distributed under the MIT license that can be found in the LICENSE file.
 
 #include "llvm_util/llvm2alive.h"
+#include "ir/instr.h"
 #include "llvm_util/known_fns.h"
 #include "llvm_util/utils.h"
 #include "util/sort.h"
@@ -1250,7 +1251,13 @@ public:
     case llvm::Intrinsic::x86_ssse3_psign_d_128:
     case llvm::Intrinsic::x86_avx2_psign_b:
     case llvm::Intrinsic::x86_avx2_psign_w:
-    case llvm::Intrinsic::x86_avx2_psign_d: {
+    case llvm::Intrinsic::x86_avx2_psign_d:
+    case llvm::Intrinsic::x86_ssse3_phadd_w_128:
+    case llvm::Intrinsic::x86_ssse3_phadd_d_128:
+    case llvm::Intrinsic::x86_ssse3_phadd_sw_128:
+    case llvm::Intrinsic::x86_avx2_phadd_w:
+    case llvm::Intrinsic::x86_avx2_phadd_d:
+    case llvm::Intrinsic::x86_avx2_phadd_sw: {
       PARSE_BINOP();
       X86IntrinBinOp::Op op;
       switch (i.getIntrinsicID()) {
@@ -1462,6 +1469,18 @@ public:
         op = X86IntrinBinOp::avx2_psign_w; break;
       case llvm::Intrinsic::x86_avx2_psign_d:
         op = X86IntrinBinOp::avx2_psign_d; break;
+      case llvm::Intrinsic::x86_ssse3_phadd_w_128:
+        op = X86IntrinBinOp::ssse3_phadd_w_128; break;
+      case llvm::Intrinsic::x86_ssse3_phadd_d_128:
+        op = X86IntrinBinOp::ssse3_phadd_d_128; break;
+      case llvm::Intrinsic::x86_ssse3_phadd_sw_128:
+        op = X86IntrinBinOp::ssse3_phadd_sw_128; break;
+      case llvm::Intrinsic::x86_avx2_phadd_w:
+        op = X86IntrinBinOp::avx2_phadd_w; break;
+      case llvm::Intrinsic::x86_avx2_phadd_d:
+        op = X86IntrinBinOp::avx2_phadd_d; break;
+      case llvm::Intrinsic::x86_avx2_phadd_sw:
+        op = X86IntrinBinOp::avx2_phadd_sw; break;
       default: UNREACHABLE();
       }
       RETURN_IDENTIFIER(make_unique<X86IntrinBinOp>(*ty, value_name(i),
