@@ -4871,6 +4871,12 @@ string X86IntrinBinOp::getOpName(Op op) {
   case avx2_psign_b:       return "x86.avx2.psign.b";
   case avx2_psign_w:       return "x86.avx2.psign.w";
   case avx2_psign_d:       return "x86.avx2.psign.d";
+  case ssse3_phadd_w_128:  return "x86.ssse3.phadd.w.128";
+  case ssse3_phadd_d_128:  return "x86.ssse3.phadd.d.128";
+  case ssse3_phadd_sw_128: return "x86.ssse3.phadd.sw.128";
+  case avx2_phadd_w:       return "x86.avx2.phadd.w";
+  case avx2_phadd_d:       return "x86.avx2.phadd.d";
+  case avx2_phadd_sw:      return "x86.avx2.phadd.sw";
   }
   UNREACHABLE();
 }
@@ -5177,6 +5183,45 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
       vals.emplace_back(move(bi));
     }
 
+    return rty->aggregateVals(vals);
+  }
+  // horizontal
+  case ssse3_phadd_w_128:
+  case ssse3_phadd_d_128:
+  case ssse3_phadd_sw_128:
+  case avx2_phadd_w:
+  case avx2_phadd_d:
+  case avx2_phadd_sw: {
+    vector<StateValue> vals;
+    unsigned laneCount = shape_ret[op].first;
+    function<expr(const expr&, const expr&)> fn;
+    switch (op) {
+    case ssse3_phadd_w_128:
+    case ssse3_phadd_d_128:
+    case avx2_phadd_w:
+    case avx2_phadd_d:
+      fn = [&](auto a, auto b) -> expr {
+        return a + b;
+      };
+      break;
+    case ssse3_phadd_sw_128:
+    case avx2_phadd_sw:
+      fn = [&](auto a, auto b) -> expr {
+        return a.sadd_sat(b);
+      };
+      break;
+    default: UNREACHABLE();
+    }
+    for (unsigned i = 0; i != laneCount; i += 2) {
+      auto [a1, p1] = aty->extract(av, i);
+      auto [a2, p2] = bty->extract(av, i + 1);
+      vals.emplace_back(fn(a1, a2), p1 && p2);
+    }
+    for (unsigned i = 0; i != laneCount; i += 2) {
+      auto [b1, p1] = aty->extract(bv, i);
+      auto [b2, p2] = bty->extract(bv, i + 1);
+      vals.emplace_back(fn(b1, b2), p1 && p2);
+    }
     return rty->aggregateVals(vals);
   }
   case sse2_psrli_w:
