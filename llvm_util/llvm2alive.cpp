@@ -1231,7 +1231,13 @@ public:
     case llvm::Intrinsic::x86_ssse3_phadd_sw_128:
     case llvm::Intrinsic::x86_avx2_phadd_w:
     case llvm::Intrinsic::x86_avx2_phadd_d:
-    case llvm::Intrinsic::x86_avx2_phadd_sw: {
+    case llvm::Intrinsic::x86_avx2_phadd_sw:
+    case llvm::Intrinsic::x86_ssse3_phsub_w_128:
+    case llvm::Intrinsic::x86_ssse3_phsub_d_128:
+    case llvm::Intrinsic::x86_ssse3_phsub_sw_128:
+    case llvm::Intrinsic::x86_avx2_phsub_w:
+    case llvm::Intrinsic::x86_avx2_phsub_d:
+    case llvm::Intrinsic::x86_avx2_phsub_sw: {
       PARSE_BINOP();
       X86IntrinBinOp::Op op;
       switch (i.getIntrinsicID()) {
@@ -1455,6 +1461,18 @@ public:
         op = X86IntrinBinOp::avx2_phadd_d; break;
       case llvm::Intrinsic::x86_avx2_phadd_sw:
         op = X86IntrinBinOp::avx2_phadd_sw; break;
+      case llvm::Intrinsic::x86_ssse3_phsub_w_128:
+        op = X86IntrinBinOp::ssse3_phsub_w_128; break;
+      case llvm::Intrinsic::x86_ssse3_phsub_d_128:
+        op = X86IntrinBinOp::ssse3_phsub_d_128; break;
+      case llvm::Intrinsic::x86_ssse3_phsub_sw_128:
+        op = X86IntrinBinOp::ssse3_phsub_sw_128; break;
+      case llvm::Intrinsic::x86_avx2_phsub_w:
+        op = X86IntrinBinOp::avx2_phsub_w; break;
+      case llvm::Intrinsic::x86_avx2_phsub_d:
+        op = X86IntrinBinOp::avx2_phsub_d; break;
+      case llvm::Intrinsic::x86_avx2_phsub_sw:
+        op = X86IntrinBinOp::avx2_phsub_sw; break;
       default: UNREACHABLE();
       }
       RETURN_IDENTIFIER(make_unique<X86IntrinBinOp>(*ty, value_name(i),
