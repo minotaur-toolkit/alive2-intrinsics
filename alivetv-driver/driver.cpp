@@ -22,27 +22,10 @@ int main()
 	InitializeModule();
 
 	//Initialize native target information for Just In Time Compiler	
-	llvm::InitializeAllTargetInfos();
 	llvm::InitializeNativeTarget();
-	llvm::InitializeAllTargetMCs();
 	llvm::InitializeNativeTargetAsmParser();
 	llvm::InitializeNativeTargetAsmPrinter();
 	
-	TargetInfo target { "x86_64", "skylake" };
-
-	std::string Error;
-	auto Target = llvm::TargetRegistry::lookupTarget(target.Trip, Error);
-	if (!Target) {
-	  errs() << Error;
-	  report_fatal_error("Can't lookup target");
-	}
-
-	auto Features = "";
-	llvm::TargetOptions Opt;
-	auto RM = Optional<Reloc::Model>();
-	auto TM = Target->createTargetMachine(target.Trip, target.CPU, Features, Opt, RM, None, llvm::CodeGenOpt::Default, true);
-	TheModule->setDataLayout(TM->createDataLayout());
-
 	//Initialize Just In Time Compiler
 	auto JITInit = llvm::orc::JIT::Create();
 
@@ -54,10 +37,10 @@ int main()
 	std::unique_ptr<llvm::orc::JIT> JITCompiler = std::move(*JITInit);
 	
 	//Set data layout of module
-	//TheModule->setDataLayout(JITCompiler->getDataLayout());
+	TheModule->setDataLayout(JITCompiler->getDataLayout());
 
 	// All intrinsic functions must be added below (probably in some for loop)	
-	for(int i = 5; i < 7; ++i)
+	for(int i = 0; i < 11; ++i)
 	{
 		llvm::Function* testFunc = llvm::Intrinsic::getDeclaration(TheModule.get(), X86IntrinBinOp::intrin_id.at(i));
 		generateCallFunctionFromFunction(testFunc, "func" + std::to_string(i));

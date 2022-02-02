@@ -103,9 +103,7 @@ public:
 
   JITTargetAddress getFuncAddress(std::string str)
   {
-    std::cout << str  << std::endl;
     auto funcLookup = lookup(str);
-    std::cout << "TEST" << std::endl;
 
     if (auto E = funcLookup.takeError()) {
       errs() << "Problem with JIT lookup " << toString(std::move(E)) << "\n";
