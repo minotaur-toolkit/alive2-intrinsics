@@ -8,8 +8,13 @@
 #include "compareFunctions.cpp"
 
 #include "llvm/Support/TargetSelect.h"
+#include "llvm/MC/TargetRegistry.h"
+#include "llvm/Target/TargetOptions.h"
 #include <utility>
 
+struct TargetInfo {
+  std::string Trip, CPU;
+};
 
 int main()
 {		
@@ -17,8 +22,26 @@ int main()
 	InitializeModule();
 
 	//Initialize native target information for Just In Time Compiler	
+	llvm::InitializeAllTargetInfos();
 	llvm::InitializeNativeTarget();
+	llvm::InitializeAllTargetMCs();
+	llvm::InitializeNativeTargetAsmParser();
 	llvm::InitializeNativeTargetAsmPrinter();
+	
+	TargetInfo target { "x86_64", "skylake" };
+
+	std::string Error;
+	auto Target = llvm::TargetRegistry::lookupTarget(target.Trip, Error);
+	if (!Target) {
+	  errs() << Error;
+	  report_fatal_error("Can't lookup target");
+	}
+
+	auto Features = "";
+	llvm::TargetOptions Opt;
+	auto RM = Optional<Reloc::Model>();
+	auto TM = Target->createTargetMachine(target.Trip, target.CPU, Features, Opt, RM);
+	TheModule->setDataLayout(TM->createDataLayout());
 
 	//Initialize Just In Time Compiler
 	auto JITInit = llvm::orc::JIT::Create();
@@ -31,10 +54,10 @@ int main()
 	std::unique_ptr<llvm::orc::JIT> JITCompiler = std::move(*JITInit);
 	
 	//Set data layout of module
-	TheModule->setDataLayout(JITCompiler->getDataLayout());
+	//TheModule->setDataLayout(JITCompiler->getDataLayout());
 
 	// All intrinsic functions must be added below (probably in some for loop)	
-	for(int i = 0; i < 11; ++i)
+	for(int i = 5; i < 7; ++i)
 	{
 		llvm::Function* testFunc = llvm::Intrinsic::getDeclaration(TheModule.get(), X86IntrinBinOp::intrin_id.at(i));
 		generateCallFunctionFromFunction(testFunc, "func" + std::to_string(i));
@@ -62,7 +85,6 @@ int main()
 	//Set up output stream for Alive2 info, then set up smt
 	out = &std::cout;
 	smt_init.emplace();
-	
 	
 	//This variable below is the only variable that needs to be manually changed in main
 	//(with the exception of the ranges on vectorRandomizer in the for loop)
@@ -97,10 +119,9 @@ int main()
 		(std::conditional<op0BitSize != 512, std::conditional<op0BitSize == 256, __m256i, __m128i>::type, __m512i>::type,
 		std::conditional<op1BitSize != 512, std::conditional<op1BitSize == 256, __m256i, __m128i>::type, __m512i>::type);
 
-	
-	auto funcPointer = reinterpret_cast<opFunctionType>(JITCompiler->getFuncAddress("func6"));
+
+	auto* funcPointer = reinterpret_cast<opFunctionType>(JITCompiler->getFuncAddress("func6"));
 	//This jank might truly be real honest to god undefined behavior above, someone help	
-	
 
 	//Declare the intrinsic to be used
 	llvm::Function* intrinsicFunction = llvm::Intrinsic::getDeclaration(TheModule.get(), llvm::Intrinsic::x86_sse2_pavg_w);
