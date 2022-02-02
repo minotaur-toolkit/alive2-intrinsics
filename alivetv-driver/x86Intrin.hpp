@@ -287,7 +287,11 @@ public:
 	static_assert((bitwidth == 8) || (bitwidth == 16) || (bitwidth == 32) || (bitwidth == 64));
 	return bitwidth;
   }
-  
+  template<unsigned long int index>
+  constexpr X86IntrinBinOp::Op getOp()
+  {
+   	return static_cast<X86IntrinBinOp::Op>(index);
+  }
 
 inline __m128i mm_srl_epi16(__m128i a, __m128i b) { return _mm_srl_epi16(a, b); }
 inline __m128i mm_srl_epi32(__m128i a, __m128i b) { return _mm_srl_epi32(a, b); }
