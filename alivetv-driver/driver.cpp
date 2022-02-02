@@ -40,7 +40,7 @@ int main()
 	auto Features = "";
 	llvm::TargetOptions Opt;
 	auto RM = Optional<Reloc::Model>();
-	auto TM = Target->createTargetMachine(target.Trip, target.CPU, Features, Opt, RM);
+	auto TM = Target->createTargetMachine(target.Trip, target.CPU, Features, Opt, RM, None, llvm::CodeGenOpt::Default, true);
 	TheModule->setDataLayout(TM->createDataLayout());
 
 	//Initialize Just In Time Compiler

@@ -67,9 +67,17 @@ public:
       return EPC.takeError();
 
     auto ES = std::make_unique<ExecutionSession>(std::move(*EPC));
+    auto triple = ES->getExecutorProcessControl().getTargetTriple();
+    std::cout << triple.getArchName().str() << " " << triple.getVendorName().str() << " " << triple.getOSName().str() << std::endl;
 
-    JITTargetMachineBuilder JTMB(
-        ES->getExecutorProcessControl().getTargetTriple());
+    auto expectedMachineBuilder = llvm::orc::JITTargetMachineBuilder::detectHost();
+    //Below executes if host couldn't be detected
+    if (auto E = expectedMachineBuilder.takeError()) {
+      errs() << "Problem with detecting host " << toString(std::move(E)) << "\n";
+      exit(-1);
+    }
+
+    JITTargetMachineBuilder JTMB = *expectedMachineBuilder;
 
     auto DL = JTMB.getDefaultDataLayoutForTarget();
     if (!DL)
