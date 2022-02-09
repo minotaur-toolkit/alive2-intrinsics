@@ -134,34 +134,34 @@ type constexpr vectorRandomizer(type input) {
 		}
 		else if constexpr (bitwidth == 16)
 		{
-			returnVector = _mm512_setr_epi16(	std::get<2>(vals)[0], std::get<2>(vals)[1], std::get<2>(vals)[2], std::get<2>(vals)[3],
-								std::get<2>(vals)[4], std::get<2>(vals)[5], std::get<2>(vals)[6], std::get<2>(vals)[7],
-								std::get<2>(vals)[8], std::get<2>(vals)[9], std::get<2>(vals)[10], std::get<2>(vals)[11],
-								std::get<2>(vals)[12], std::get<2>(vals)[13], std::get<2>(vals)[14], std::get<2>(vals)[15],
-								std::get<2>(vals)[16], std::get<2>(vals)[17], std::get<2>(vals)[18], std::get<2>(vals)[19],
-								std::get<2>(vals)[20], std::get<2>(vals)[21], std::get<2>(vals)[22], std::get<2>(vals)[23],
-								std::get<2>(vals)[24], std::get<2>(vals)[25], std::get<2>(vals)[26], std::get<2>(vals)[27],
-								std::get<2>(vals)[28], std::get<2>(vals)[29], std::get<2>(vals)[30], std::get<2>(vals)[31]);
+			returnVector = _mm512_set_epi16(	std::get<2>(vals)[31], std::get<2>(vals)[30], std::get<2>(vals)[29], std::get<2>(vals)[28],
+								std::get<2>(vals)[27], std::get<2>(vals)[26], std::get<2>(vals)[25], std::get<2>(vals)[24],
+								std::get<2>(vals)[23], std::get<2>(vals)[22], std::get<2>(vals)[21], std::get<2>(vals)[20],
+								std::get<2>(vals)[19], std::get<2>(vals)[18], std::get<2>(vals)[17], std::get<2>(vals)[16],
+								std::get<2>(vals)[15], std::get<2>(vals)[14], std::get<2>(vals)[13], std::get<2>(vals)[12],
+								std::get<2>(vals)[11], std::get<2>(vals)[10], std::get<2>(vals)[9], std::get<2>(vals)[8],
+								std::get<2>(vals)[7], std::get<2>(vals)[6], std::get<2>(vals)[5], std::get<2>(vals)[4],
+								std::get<2>(vals)[3], std::get<2>(vals)[2], std::get<2>(vals)[1], std::get<2>(vals)[0]);
 
 		}
 		else if constexpr (bitwidth == 8)
 		{
-			returnVector = _mm512_setr_epi8(	std::get<3>(vals)[0], std::get<3>(vals)[1], std::get<3>(vals)[2], std::get<3>(vals)[3],
-								std::get<3>(vals)[4], std::get<3>(vals)[5], std::get<3>(vals)[6], std::get<3>(vals)[7],
-								std::get<3>(vals)[8], std::get<3>(vals)[9], std::get<3>(vals)[10], std::get<3>(vals)[11],
-								std::get<3>(vals)[12], std::get<3>(vals)[13], std::get<3>(vals)[14], std::get<3>(vals)[15],
-								std::get<3>(vals)[16], std::get<3>(vals)[17], std::get<3>(vals)[18], std::get<3>(vals)[19],
-								std::get<3>(vals)[20], std::get<3>(vals)[21], std::get<3>(vals)[22], std::get<3>(vals)[23],
-								std::get<3>(vals)[24], std::get<3>(vals)[25], std::get<3>(vals)[26], std::get<3>(vals)[27],
-								std::get<3>(vals)[28], std::get<3>(vals)[29], std::get<3>(vals)[30], std::get<3>(vals)[31],
-								std::get<3>(vals)[32], std::get<3>(vals)[33], std::get<3>(vals)[34], std::get<3>(vals)[35],
-								std::get<3>(vals)[36], std::get<3>(vals)[37], std::get<3>(vals)[38], std::get<3>(vals)[39],
-								std::get<3>(vals)[40], std::get<3>(vals)[41], std::get<3>(vals)[42], std::get<3>(vals)[43],
-								std::get<3>(vals)[44], std::get<3>(vals)[45], std::get<3>(vals)[46], std::get<3>(vals)[47],
-								std::get<3>(vals)[48], std::get<3>(vals)[49], std::get<3>(vals)[50], std::get<3>(vals)[51],
-								std::get<3>(vals)[52], std::get<3>(vals)[53], std::get<3>(vals)[54], std::get<3>(vals)[55],
-								std::get<3>(vals)[56], std::get<3>(vals)[57], std::get<3>(vals)[58], std::get<3>(vals)[59],
-								std::get<3>(vals)[60], std::get<3>(vals)[61], std::get<3>(vals)[62], std::get<3>(vals)[63]);
+			returnVector = _mm512_set_epi8(		std::get<3>(vals)[63], std::get<3>(vals)[62], std::get<3>(vals)[61], std::get<3>(vals)[60],
+								std::get<3>(vals)[59], std::get<3>(vals)[58], std::get<3>(vals)[57], std::get<3>(vals)[56],
+								std::get<3>(vals)[55], std::get<3>(vals)[54], std::get<3>(vals)[53], std::get<3>(vals)[52],
+								std::get<3>(vals)[51], std::get<3>(vals)[50], std::get<3>(vals)[49], std::get<3>(vals)[48],
+								std::get<3>(vals)[47], std::get<3>(vals)[46], std::get<3>(vals)[45], std::get<3>(vals)[44],
+								std::get<3>(vals)[43], std::get<3>(vals)[42], std::get<3>(vals)[41], std::get<3>(vals)[40],
+								std::get<3>(vals)[39], std::get<3>(vals)[38], std::get<3>(vals)[37], std::get<3>(vals)[36],
+								std::get<3>(vals)[35], std::get<3>(vals)[34], std::get<3>(vals)[33], std::get<3>(vals)[32],
+								std::get<3>(vals)[31], std::get<3>(vals)[30], std::get<3>(vals)[29], std::get<3>(vals)[28],
+								std::get<3>(vals)[27], std::get<3>(vals)[26], std::get<3>(vals)[25], std::get<3>(vals)[24],
+								std::get<3>(vals)[23], std::get<3>(vals)[22], std::get<3>(vals)[21], std::get<3>(vals)[20],
+								std::get<3>(vals)[19], std::get<3>(vals)[18], std::get<3>(vals)[17], std::get<3>(vals)[16],
+								std::get<3>(vals)[15], std::get<3>(vals)[14], std::get<3>(vals)[13], std::get<3>(vals)[12],
+								std::get<3>(vals)[11], std::get<3>(vals)[10], std::get<3>(vals)[9], std::get<3>(vals)[8],
+								std::get<3>(vals)[7], std::get<3>(vals)[6], std::get<3>(vals)[5], std::get<3>(vals)[4],
+								std::get<3>(vals)[3], std::get<3>(vals)[2], std::get<3>(vals)[1], std::get<3>(vals)[0]);
 		}
 	}
 	else if constexpr (vectorBitSize == 256)

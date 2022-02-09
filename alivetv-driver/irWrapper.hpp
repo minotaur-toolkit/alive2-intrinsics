@@ -29,8 +29,8 @@ std::unique_ptr<IntVectorExprAST> generateVector(type input) {
 
 	std::unique_ptr<IntExprAST> expr;
 	std::vector<std::unique_ptr<IntExprAST>> valVec;
-
-        for(unsigned i = 0; i < vectorBitSize / bitwidth; ++i)
+        
+	for(unsigned i = 0; i < vectorBitSize / bitwidth; ++i)
                 std::visit([&](auto&& arg)
 				{
 				  expr = std::make_unique<IntExprAST>(arg[i], intType);
@@ -84,7 +84,7 @@ Function* generateCallFunction(typeOp1 input1, typeOp2 input2, Function* func, s
 
 	std::unique_ptr<FunctionAST> returnFunction =
 	std::make_unique<FunctionAST>(std::move(proto), std::move(callExpr));
-
+	
 	return returnFunction->codegen();
 }
 

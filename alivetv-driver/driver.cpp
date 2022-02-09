@@ -40,7 +40,7 @@ int main()
 	// All intrinsic functions must be added below (probably in some for loop)	
 	for(int i = 0; i < 11; ++i)
 	{
-		llvm::Function* testFunc = llvm::Intrinsic::getDeclaration(TheModule.get(), X86IntrinBinOp::intrin_id.at(i));
+		llvm::Function* testFunc = llvm::Intrinsic::getDeclaration(TheModule.get(), TesterX86IntrinBinOp::intrin_id.at(i));
 		generateCallFunctionFromFunction(testFunc, "func" + std::to_string(i));
 	}
 	
@@ -71,8 +71,8 @@ int main()
 	//(with the exception of the ranges on vectorRandomizer in the for loop)
 	
 	static_for<8>([&](auto index) {
-		constexpr X86IntrinBinOp::Op op = getOp<index.value>();
-
+		constexpr IR::X86IntrinBinOp::Op op = getOp<index.value>();
+		
 		constexpr unsigned timesToLoop = 2;	
 
 		//Bitsize is the number of bits in the entire vector
@@ -84,7 +84,7 @@ int main()
 		constexpr unsigned op0Bitwidth = bitwidthOp0<op>();
 		constexpr unsigned op1Bitwidth = bitwidthOp1<op>();
 		constexpr unsigned retBitwidth = bitwidthRet<op>();	
-
+		
 		//vals = op0
 		//vals2 = op1
 		//retVec = ret
@@ -104,10 +104,10 @@ int main()
 
 		auto* funcPointer = reinterpret_cast<opFunctionType>(JITCompiler->getFuncAddress("func" + std::to_string(index.value)));
 		//This jank might truly be real honest to god undefined behavior above, someone help	
-
+		
 		//Declare the intrinsic to be used
-		llvm::Function* intrinsicFunction = llvm::Intrinsic::getDeclaration(TheModule.get(), X86IntrinBinOp::intrin_id.at((int) op));
-
+		llvm::Function* intrinsicFunction = llvm::Intrinsic::getDeclaration(TheModule.get(), TesterX86IntrinBinOp::intrin_id.at((int) op));
+		
 		//Loop that tests for the equality of both functions for equal inputs	
 		for(int i = 0; i != timesToLoop; ++i) {
 			vals = vectorRandomizer<op0Bitwidth>(vals);
@@ -117,7 +117,6 @@ int main()
 			
 			llvm::Function* tgtFunc = generateReturnFunction<retBitwidth>(retVec, "tgt");
 			llvm::Function* srcFunc = generateCallFunction<op0Bitwidth, op1Bitwidth>(vals, vals2, intrinsicFunction, "src");
-
 			compareFunctions(*srcFunc, *tgtFunc, TLI);
 
 			tgtFunc->eraseFromParent();

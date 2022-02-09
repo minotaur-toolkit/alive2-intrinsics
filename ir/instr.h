@@ -972,7 +972,7 @@ public:
   /* llvm.x86.avx512.pavg.b.512 */     avx512_pavg_b_512,
   /* llvm.x86.avx512.pavg.w.512 */     avx512_pavg_w_512,
   /* llvm.x86.avx2.pshuf.b */          avx2_pshuf_b,
-  /* llvm.x86.ssse2.pshuf.b.128 */     ssse3_pshuf_b_128,
+  /* llvm.x86.ssse3.pshuf.b.128 */     ssse3_pshuf_b_128,
   /* llvm.x86.mmx.padd.b */            mmx_padd_b,
   /* llvm.x86.mmx.padd.w */            mmx_padd_w,
   /* llvm.x86.mmx.padd.d */            mmx_padd_d,
