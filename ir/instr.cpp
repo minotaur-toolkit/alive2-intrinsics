@@ -4842,6 +4842,7 @@ string X86IntrinBinOp::getOpName(Op op) {
   case avx512_pavg_b_512:     return "x86.avx512.pavg.b.512";
   case avx2_pshuf_b:          return "x86.avx2.pshuf.b";
   case ssse3_pshuf_b_128:     return "x86.ssse3.pshuf.b.128";
+  case avx512_pshuf_b_512:    return "x86.avx512.pshuf.b.512";
   case mmx_padd_b:            return "x86.mmx.padd.b";
   case mmx_padd_w:            return "x86.mmx.padd.w";
   case mmx_padd_d:            return "x86.mmx.padd.d";
@@ -5237,8 +5238,10 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
     }
     return rty->aggregateVals(vals);
   }
+  // pshuf.b
   case ssse3_pshuf_b_128:
   case avx2_pshuf_b:
+  case avx512_pshuf_b_512:
   {
     auto avty = static_cast<const VectorType*>(aty);
     vector<StateValue> vals;
