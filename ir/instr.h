@@ -963,16 +963,17 @@ public:
 
 class X86IntrinBinOp final : public Instr {
 public:
-  static constexpr unsigned numOfX86Intrinsics = 128;
+  static constexpr unsigned numOfX86Intrinsics = 129;
   enum Op {
   /* llvm.x86.sse2.pavg.w */           sse2_pavg_w = 0,
   /* llvm.x86.sse2.pavg.b */           sse2_pavg_b,
   /* llvm.x86.avx2.pavg.w */           avx2_pavg_w,
   /* llvm.x86.avx2.pavg.b */           avx2_pavg_b,
-  /* llvm.x86.avx512.pavg.b.512 */     avx512_pavg_b_512,
   /* llvm.x86.avx512.pavg.w.512 */     avx512_pavg_w_512,
+  /* llvm.x86.avx512.pavg.b.512 */     avx512_pavg_b_512,
   /* llvm.x86.avx2.pshuf.b */          avx2_pshuf_b,
-  /* llvm.x86.ssse3.pshuf.b.128 */     ssse3_pshuf_b_128,
+  /* llvm.x86.ssse2.pshuf.b.128 */     ssse3_pshuf_b_128,
+  /* llvm.x86.avx512.pshuf.b.512*/     avx512_pshuf_b_512,
   /* llvm.x86.mmx.padd.b */            mmx_padd_b,
   /* llvm.x86.mmx.padd.w */            mmx_padd_w,
   /* llvm.x86.mmx.padd.d */            mmx_padd_d,
@@ -1105,6 +1106,7 @@ public:
   /* avx512_pavg_b_512 */     std::make_pair(64, 8),
   /* avx2_pshuf_b */          std::make_pair(32, 8),
   /* ssse3_pshuf_b_128 */     std::make_pair(16, 8),
+  /* avx512_pshuf_b_512 */    std::make_pair(64, 8),
   /* mmx_padd_b */            std::make_pair(8, 8),
   /* mmx_padd_w */            std::make_pair(4, 16),
   /* mmx_padd_d */            std::make_pair(2, 32),
@@ -1235,6 +1237,7 @@ public:
   /* avx512_pavg_b_512 */     std::make_pair(64, 8),
   /* avx2_pshuf_b */          std::make_pair(32, 8),
   /* ssse3_pshuf_b_128 */     std::make_pair(16, 8),
+  /* avx512_pshuf_b_512 */    std::make_pair(64, 8),
   /* mmx_padd_b */            std::make_pair(8, 8),
   /* mmx_padd_w */            std::make_pair(4, 16),
   /* mmx_padd_d */            std::make_pair(2, 32),
@@ -1365,6 +1368,7 @@ public:
   /* avx512_pavg_b_512 */     std::make_pair(64, 8),
   /* avx2_pshuf_b */          std::make_pair(32, 8),
   /* ssse3_pshuf_b_128 */     std::make_pair(16, 8),
+  /* avx512_pshuf_b_512 */    std::make_pair(64, 8),
   /* mmx_padd_b */            std::make_pair(8, 8),
   /* mmx_padd_w */            std::make_pair(4, 16),
   /* mmx_padd_d */            std::make_pair(2, 32),
