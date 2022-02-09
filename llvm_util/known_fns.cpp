@@ -37,21 +37,42 @@ known_call(llvm::CallInst &i, const llvm::TargetLibraryInfo &TLI,
   if (!ty)
     RETURN_EXACT();
 
+  auto fn = i.getCalledFunction();
+  if (fn && fn->hasName() && fn->getName().startswith("__sv_")) {
+    RETURN_VAL(
+      make_unique<ReservedShuffleVector>(*ty, value_name(i), *args[0], *args[1], *args[2]));
+  }
+
   // TODO: add support for checking mismatch of C vs C++ alloc fns
-  if (llvm::isMallocLikeFn(&i, &TLI, false)) {
+  if (llvm::isMallocOrCallocLikeFn(&i, &TLI)) {
+    // aligned malloc
+    if (auto *algn = llvm::getAllocAlignment(&i, &TLI)) {
+      if (auto algnint = dyn_cast<llvm::ConstantInt>(algn)) {
+        RETURN_VAL(
+          make_unique<Malloc>(*ty, value_name(i), *args[1], false,
+                              algnint->getZExtValue()));
+      } else {
+        // TODO: add support for non-const alignments
+        RETURN_APPROX();
+      }
+    }
+
+    // calloc
+    if (auto *init = llvm::getInitialValueOfAllocation(&i, &TLI, i.getType());
+        init && init->isNullValue())
+      RETURN_VAL(
+        make_unique<Calloc>(*ty, value_name(i), *args[0], *args[1], align(i)));
+
+    // malloc or new
     bool isNonNull = i.getCalledFunction()->getName() != "malloc";
     RETURN_VAL(
       make_unique<Malloc>(*ty, value_name(i), *args[0], isNonNull, align(i)));
   }
-  else if (llvm::isCallocLikeFn(&i, &TLI, false)) {
-    RETURN_VAL(
-      make_unique<Calloc>(*ty, value_name(i), *args[0], *args[1], align(i)));
-  }
-  else if (llvm::isReallocLikeFn(&i, &TLI, false)) {
+  if (llvm::isReallocLikeFn(&i, &TLI)) {
     RETURN_VAL(
       make_unique<Malloc>(*ty, value_name(i), *args[0], *args[1], align(i)));
   }
-  else if (llvm::isFreeCall(&i, &TLI)) {
+  if (llvm::isFreeCall(&i, &TLI)) {
     if (i.hasFnAttr(llvm::Attribute::NoFree)) {
       auto zero = make_intconst(0, 1);
       RETURN_VAL(make_unique<Assume>(*zero, Assume::AndNonPoison));
@@ -174,14 +195,15 @@ known_call(llvm::CallInst &i, const llvm::TargetLibraryInfo &TLI,
   case llvm::LibFunc_fwrite: {
     auto size = getInt(*args[1]);
     auto count = getInt(*args[2]);
-    if (size && count) {
-      auto bytes = *size * *count;
+    if (size || count) {
       // size_t fwrite(const void *ptr, 0, 0, FILE *stream) -> 0
-      if (bytes == 0)
+      if ((size && *size == 0) || (count && *count == 0))
         RETURN_VAL(
           make_unique<UnaryOp>(*ty, value_name(i),
                                *make_intconst(0, ty->bits()), UnaryOp::Copy));
-
+    }
+    if (size && count) {
+      auto bytes = *size * *count;
       // (void)fwrite(const void *ptr, 1, 1, FILE *stream) ->
       //   (void)fputc(int c, FILE *stream))
       if (bytes == 1 && i.use_empty() && TLI.has(llvm::LibFunc_fputc)) {

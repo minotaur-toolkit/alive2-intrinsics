@@ -1259,15 +1259,18 @@ StateValue ConversionOp::toSMT(State &s) const {
     fn = [](auto &&val, auto &to_type) -> StateValue {
       expr bv  = val.fp2sint(to_type.bits());
       expr fp2 = bv.sint2fp(val);
-      // -0.0 is converted to 0 and then to 0.0, though -0.0 is ok to convert
-      return { move(bv), val.isFPZero() || fp2 == val.roundtz() };
+      // -0.xx is converted to 0 and then to 0.0, though -0.xx is ok to convert
+      expr valrtz = val.roundtz();
+      return { move(bv), valrtz.isFPZero() || fp2 == valrtz };
     };
     break;
   case FPToUInt:
     fn = [](auto &&val, auto &to_type) -> StateValue {
       expr bv  = val.fp2uint(to_type.bits());
       expr fp2 = bv.uint2fp(val);
-      return { move(bv), fp2 == val.roundtz() };
+      // -0.xx must be converted to 0, not poison.
+      expr valrtz = val.roundtz();
+      return { move(bv), valrtz.isFPZero() || fp2 == valrtz };
     };
     break;
   case FPExt:
@@ -1799,7 +1802,8 @@ StateValue FnCall::toSMT(State &s) const {
   vector<StateValue> inputs;
   vector<Memory::PtrInput> ptr_inputs;
   vector<Type*> out_types;
-  bool argmemonly = attrs.has(FnAttrs::ArgMemOnly);
+  bool argmemonly_fn   = s.getFn().getFnAttrs().has(FnAttrs::ArgMemOnly);
+  bool argmemonly_call = hasAttribute(FnAttrs::ArgMemOnly);
 
   ostringstream fnName_mangled;
   fnName_mangled << fnName;
@@ -1818,7 +1822,7 @@ StateValue FnCall::toSMT(State &s) const {
       sv2 = s[*arg];
     }
 
-    unpack_inputs(s, *arg, arg->getType(), flags, argmemonly, move(sv),
+    unpack_inputs(s, *arg, arg->getType(), flags, argmemonly_fn, move(sv),
                   move(sv2), inputs, ptr_inputs);
     fnName_mangled << '#' << arg->getType();
   }
@@ -1826,12 +1830,20 @@ StateValue FnCall::toSMT(State &s) const {
   if (!isVoid())
     unpack_ret_ty(out_types, getType());
 
-  auto check_access = [&]() {
-    if (argmemonly) {
+  auto check = [&](FnAttrs::Attribute attr) {
+    return s.getFn().getFnAttrs().has(attr) && !hasAttribute(attr);
+  };
+
+  auto check_implies = [&](FnAttrs::Attribute attr) {
+    if (!check(attr))
+      return;
+
+    if (argmemonly_call) {
       for (auto &p : ptr_inputs) {
         if (!p.byval) {
           Pointer ptr(s.getMemory(), p.val.value);
-          s.addUB(p.val.non_poison.implies(ptr.isLocal()));
+          s.addUB(p.val.non_poison.implies(
+                    ptr.isLocal() || ptr.isConstGlobal()));
         }
       }
     } else {
@@ -1839,25 +1851,19 @@ StateValue FnCall::toSMT(State &s) const {
     }
   };
 
-  if (!attrs.has(FnAttrs::NoRead)) {
-    if (s.getFn().getFnAttrs().has(FnAttrs::NoRead))
-      check_access();
-  }
-
-  if (!attrs.has(FnAttrs::NoWrite)) {
-    if (s.getFn().getFnAttrs().has(FnAttrs::NoWrite))
-      check_access();
-  }
+  check_implies(FnAttrs::NoRead);
+  check_implies(FnAttrs::NoWrite);
+  check_implies(FnAttrs::NoFree);
 
   // Check attributes that calles must have if caller has them
-  auto check = [&](FnAttrs::Attribute attr) {
-    return s.getFn().getFnAttrs().has(attr) && !attrs.has(attr);
-  };
-
   if (check(FnAttrs::ArgMemOnly) ||
-      check(FnAttrs::NoFree) ||
       check(FnAttrs::NoThrow) ||
-      check(FnAttrs::WillReturn))
+      check(FnAttrs::WillReturn) ||
+      check(FnAttrs::InaccessibleMemOnly))
+    s.addUB(expr(false));
+
+  // can't have both!
+  if (attrs.has(FnAttrs::ArgMemOnly) && attrs.has(FnAttrs::InaccessibleMemOnly))
     s.addUB(expr(false));
 
   unsigned idx = 0;
@@ -3863,6 +3869,57 @@ unique_ptr<Instr> ShuffleVector::dup(const string &suffix) const {
 }
 
 
+vector<Value*> ReservedShuffleVector::operands() const {
+  return { v1, v2, mask };
+}
+
+void ReservedShuffleVector::rauw(const Value &what, Value &with) {
+  RAUW(v1);
+  RAUW(v2);
+  RAUW(mask);
+}
+
+void ReservedShuffleVector::print(ostream &os) const {
+  os << getName() << " = shufflevector " << *v1 << ", " << *v2;
+}
+
+StateValue ReservedShuffleVector::toSMT(State &s) const {
+  auto vty = static_cast<const VectorType*>(v1->getType().getAsAggregateType());
+  auto mty = mask->getType().getAsAggregateType();
+  auto sz = vty->numElementsConst();
+  vector<StateValue> vals;
+
+  for (unsigned i = 0, e = mty->numElementsConst(); i != e; ++i) {
+    auto mi = mty->extract(s[*mask], i);
+    auto idx = mi.value.urem(sz);
+    auto [v1v, v1p] = vty->extract(s[*v1], idx);
+    auto [v2v, v2p] = vty->extract(s[*v2], idx);
+    expr v  = expr::mkIf(mi.value.ult(sz), v1v, v2v);
+    expr np = expr::mkIf(mi.value.ult(sz), v1p, v2p);
+
+    expr inbounds = mi.value.ult(vty->numElementsConst() * 2);
+
+    vals.emplace_back(move(v), inbounds & np);
+  }
+
+  return getType().getAsAggregateType()->aggregateVals(vals);
+}
+
+expr ReservedShuffleVector::getTypeConstraints(const Function &f) const {
+  return Value::getTypeConstraints() &&
+         getType().enforceVectorTypeSameChildTy(v1->getType()) &&
+         getType().getAsAggregateType()->numElements() == mask->getType().getAsAggregateType()->numElements() &&
+         v1->getType().enforceVectorType() &&
+         v1->getType() == v2->getType() &&
+         mask->getType().enforceVectorType();
+}
+
+unique_ptr<Instr> ReservedShuffleVector::dup(const string &suffix) const {
+  return make_unique<ReservedShuffleVector>(getType(), getName() + suffix,
+                                            *v1, *v2, *mask);
+}
+
+
 vector<Value*> X86IntrinBinOp::operands() const {
   return { a, b };
 }
@@ -3872,150 +3929,142 @@ void X86IntrinBinOp::rauw(const Value &what, Value &with) {
   RAUW(b);
 }
 
-void X86IntrinBinOp::print(ostream &os) const {
-  const char *str = nullptr;
+string X86IntrinBinOp::getOpName(Op op) {
   switch (op) {
-  case sse2_psrl_w:
-    str = "x86.sse2.psrl.w ";
-    break;
-  case sse2_psrl_d:
-    str = "x86.sse2.psrl.d ";
-    break;
-  case sse2_psrl_q:
-    str = "x86.sse2.psrl.q ";
-    break;
-  case avx2_psrl_w:
-    str = "x86.avx2.psrl.w ";
-    break;
-  case avx2_psrl_d:
-    str = "x86.avx2.psrl.d ";
-    break;
-  case avx2_psrl_q:
-    str = "x86.avx2.psrl.q ";
-    break;
-  case sse2_pavg_w:
-    str = "x86.sse2.pavg.w ";
-    break;
-  case avx2_pavg_b:
-    str = "x86.avx2.pavg.b ";
-    break;
-  case avx2_pavg_w:
-    str = "x86.avx2.pavg.w ";
-    break;
-  case avx2_pshuf_b:
-    str = "x86.avx2.pshuf.b ";
-    break;
-  case ssse3_pshuf_b_128:
-    str = "x86.ssse3.pshuf.b.128 ";
-    break;
-  case mmx_padd_b:
-    str = "x86.mmx.padd.b ";
-    break;
-  case mmx_padd_w:
-    str = "x86.mmx.padd.w ";
-    break;
-  case mmx_padd_d:
-    str = "x86.mmx.padd.d ";
-    break;
-  case mmx_punpckhbw:
-    str = "x86.mmx.punpckhbw ";
-    break;
-  case mmx_punpckhwd:
-    str = "x86.mmx.punpckhwd ";
-    break;
-  case mmx_punpckhdq:
-    str = "x86.mmx.punpckhdq ";
-    break;
-  case mmx_punpcklbw:
-    str = "x86.mmx.punpcklbw ";
-    break;
-  case mmx_punpcklwd:
-    str = "x86.mmx.punpcklwd ";
-    break;
-  case mmx_punpckldq:
-    str = "x86.mmx.punpckldq ";
-    break;
-  case sse2_psrai_w:
-    str = "x86.sse2.psrai.w ";
-    break;
-  case sse2_psrai_d:
-    str = "x86.sse2.psrai.d ";
-    break;
-  case avx2_psrai_w:
-    str = "x86.avx2.psrai.w ";
-    break;
-  case avx2_psrai_d:
-    str = "x86.avx2.psrai.d ";
-    break;
-  case avx512_psrai_w_512:
-    str = "x86.avx512.psrai.w.512 ";
-    break;
-  case avx512_psrai_d_512:
-    str = "x86.avx512.psrai.d.512 ";
-    break;
-  case avx512_psrai_q_128:
-    str = "x86.avx512.psrai.q.128 ";
-    break;
-  case avx512_psrai_q_256:
-    str = "x86.avx512.psrai.q.256 ";
-    break;
-  case avx512_psrai_q_512:
-    str = "x86.avx512.psrai.q.512 ";
-    break;
-  case sse2_psrli_w:
-    str = "x86.sse2.psrli.w ";
-    break;
-  case sse2_psrli_d:
-    str = "x86.sse2.psrli.d ";
-    break;
-  case sse2_psrli_q:
-    str = "x86.sse2.psrli.q ";
-    break;
-  case avx2_psrli_w:
-    str = "x86.avx2.psrli.w ";
-    break;
-  case avx2_psrli_d:
-    str = "x86.avx2.psrli.d ";
-    break;
-  case avx2_psrli_q:
-    str = "x86.avx2.psrli.q ";
-    break;
-  case avx512_psrli_w_512:
-    str = "x86.avx512.psrli.w.512 ";
-    break;
-  case avx512_psrli_d_512:
-    str = "x86.avx512.psrli.d.512 ";
-    break;
-  case avx512_psrli_q_512:
-    str = "x86.avx512.psrli.q.512 ";
-  case sse2_pslli_w:
-    str = "x86.sse2.pslli.w ";
-    break;
-  case sse2_pslli_d:
-    str = "x86.sse2.pslli.d ";
-    break;
-  case sse2_pslli_q:
-    str = "x86.sse2.pslli.q ";
-    break;
-  case avx2_pslli_w:
-    str = "x86.avx2.pslli.w ";
-    break;
-  case avx2_pslli_d:
-    str = "x86.avx2.pslli.d ";
-    break;
-  case avx2_pslli_q:
-    str = "x86.avx2.pslli.q ";
-    break;
-  case avx512_pslli_w_512:
-    str = "x86.avx512.pslli.w.512 ";
-    break;
-  case avx512_pslli_d_512:
-    str = "x86.avx512.pslli.d.512 ";
-    break;
-  case avx512_pslli_q_512:
-    str = "x86.avx512.pslli.q.512 ";
+  case sse2_pavg_w:           return "x86.sse2.pavg.w";
+  case sse2_pavg_b:           return "x86.sse2.pavg.b";
+  case avx2_pavg_w:           return "x86.avx2.pavg.w";
+  case avx2_pavg_b:           return "x86.avx2.pavg.b";
+  case avx512_pavg_w_512:     return "x86.avx512.pavg.w.512";
+  case avx512_pavg_b_512:     return "x86.avx512.pavg.b.512";
+  case avx2_pshuf_b:          return "x86.avx2.pshuf.b";
+  case ssse3_pshuf_b_128:     return "x86.ssse3.pshuf.b.128";
+  case mmx_padd_b:            return "x86.mmx.padd.b";
+  case mmx_padd_w:            return "x86.mmx.padd.w";
+  case mmx_padd_d:            return "x86.mmx.padd.d";
+  case mmx_punpckhbw:         return "x86.mmx.punpckhbw";
+  case mmx_punpckhwd:         return "x86.mmx.punpckhwd";
+  case mmx_punpckhdq:         return "x86.mmx.punpckhdq";
+  case mmx_punpcklbw:         return "x86.mmx.punpcklbw";
+  case mmx_punpcklwd:         return "x86.mmx.punpcklwd";
+  case mmx_punpckldq:         return "x86.mmx.punpckldq";
+  case sse2_psrl_w:           return "x86.sse2.psrl.w";
+  case sse2_psrl_d:           return "x86.sse2.psrl.d";
+  case sse2_psrl_q:           return "x86.sse2.psrl.q";
+  case avx2_psrl_w:           return "x86.avx2.psrl.w";
+  case avx2_psrl_d:           return "x86.avx2.psrl.d";
+  case avx2_psrl_q:           return "x86.avx2.psrl.q";
+  case avx512_psrl_w_512:     return "x86.avx512.psrl.w.512";
+  case avx512_psrl_d_512:     return "x86.avx512.psrl.d.512";
+  case avx512_psrl_q_512:     return "x86.avx512.psrl.q.512";
+  case sse2_psrli_w:          return "x86.sse2.psrli.w";
+  case sse2_psrli_d:          return "x86.sse2.psrli.d";
+  case sse2_psrli_q:          return "x86.sse2.psrli.q";
+  case avx2_psrli_w:          return "x86.avx2.psrli.w";
+  case avx2_psrli_d:          return "x86.avx2.psrli.d";
+  case avx2_psrli_q:          return "x86.avx2.psrli.q";
+  case avx512_psrli_w_512:    return "x86.avx512.psrli.w.512";
+  case avx512_psrli_d_512:    return "x86.avx512.psrli.d.512";
+  case avx512_psrli_q_512:    return "x86.avx512.psrli.q.512";
+  case avx2_psrlv_d:          return "x86.avx2.psrlv.d";
+  case avx2_psrlv_d_256:      return "x86.avx2.psrlv.d.256";
+  case avx2_psrlv_q:          return "x86.avx2.psrlv.q";
+  case avx2_psrlv_q_256:      return "x86.avx2.psrlv.q.256";
+  case avx512_psrlv_d_512:    return "x86.avx512.psrlv.d.512";
+  case avx512_psrlv_q_512:    return "x86.avx512.psrlv.q.512";
+  case avx512_psrlv_w_128:    return "x86.avx512.psrlv.w.128";
+  case avx512_psrlv_w_256:    return "x86.avx512.psrlv.w.256";
+  case avx512_psrlv_w_512:    return "x86.avx512.psrlv.w.512";
+  case sse2_psra_w:           return "x86.sse2.psra.w";
+  case sse2_psra_d:           return "x86.sse2.psra.d";
+  case avx2_psra_w:           return "x86.avx2.psra.w";
+  case avx2_psra_d:           return "x86.avx2.psra.d";
+  case avx512_psra_q_128:     return "x86.avx512.psra.q.128";
+  case avx512_psra_q_256:     return "x86.avx512.psra.q.256";
+  case avx512_psra_w_512:     return "x86.avx512.psra.w.512";
+  case avx512_psra_d_512:     return "x86.avx512.psra.d.512";
+  case avx512_psra_q_512:     return "x86.avx512.psra.q.512";
+  case sse2_psrai_w:          return "x86.sse2.psrai.w";
+  case sse2_psrai_d:          return "x86.sse2.psrai.d";
+  case avx2_psrai_w:          return "x86.avx2.psrai.w";
+  case avx2_psrai_d:          return "x86.avx2.psrai.d";
+  case avx512_psrai_w_512:    return "x86.avx512.psrai.w.512";
+  case avx512_psrai_d_512:    return "x86.avx512.psrai.d.512";
+  case avx512_psrai_q_128:    return "x86.avx512.psrai.q.128";
+  case avx512_psrai_q_256:    return "x86.avx512.psrai.q.256";
+  case avx512_psrai_q_512:    return "x86.avx512.psrai.q.512";
+  case avx2_psrav_d:          return "x86.avx2.psrav.d";
+  case avx2_psrav_d_256:      return "x86.avx2.psrav.d.256";
+  case avx512_psrav_d_512:    return "x86.avx512.psrav.d.512";
+  case avx512_psrav_q_128:    return "x86.avx512.psrav.q.128";
+  case avx512_psrav_q_256:    return "x86.avx512.psrav.q.256";
+  case avx512_psrav_q_512:    return "x86.avx512.psrav.q.512";
+  case avx512_psrav_w_128:    return "x86.avx512.psrav.w.128";
+  case avx512_psrav_w_256:    return "x86.avx512.psrav.w.256";
+  case avx512_psrav_w_512:    return "x86.avx512.psrav.w.512";
+  case sse2_psll_w:           return "x86.sse2.psll.w";
+  case sse2_psll_d:           return "x86.sse2.psll.d";
+  case sse2_psll_q:           return "x86.sse2.psll.q";
+  case avx2_psll_w:           return "x86.avx2.psll.w";
+  case avx2_psll_d:           return "x86.avx2.psll.d";
+  case avx2_psll_q:           return "x86.avx2.psll.q";
+  case avx512_psll_w_512:     return "x86.avx512.psll.w.512";
+  case avx512_psll_d_512:     return "x86.avx512.psll.d.512";
+  case avx512_psll_q_512:     return "x86.avx512.psll.q.512";
+  case sse2_pslli_w:          return "x86.sse2.pslli.w";
+  case sse2_pslli_d:          return "x86.sse2.pslli.d";
+  case sse2_pslli_q:          return "x86.sse2.pslli.q";
+  case avx2_pslli_w:          return "x86.avx2.pslli.w";
+  case avx2_pslli_d:          return "x86.avx2.pslli.d";
+  case avx2_pslli_q:          return "x86.avx2.pslli.q";
+  case avx512_pslli_w_512:    return "x86.avx512.pslli.w.512";
+  case avx512_pslli_d_512:    return "x86.avx512.pslli.d.512";
+  case avx512_pslli_q_512:    return "x86.avx512.pslli.q.512";
+  case avx2_psllv_d:          return "x86.avx2.psllv.d";
+  case avx2_psllv_d_256:      return "x86.avx2.psllv.d.256";
+  case avx2_psllv_q:          return "x86.avx2.psllv.q";
+  case avx2_psllv_q_256:      return "x86.avx2.psllv.q.256";
+  case avx512_psllv_d_512:    return "x86.avx512.psllv.d.512";
+  case avx512_psllv_q_512:    return "x86.avx512.psllv.q.512";
+  case avx512_psllv_w_128:    return "x86.avx512.psllv.w.128";
+  case avx512_psllv_w_256:    return "x86.avx512.psllv.w.256";
+  case avx512_psllv_w_512:    return "x86.avx512.psllv.w.512";
+  case ssse3_psign_b_128:     return "x86.ssse3.psign.b.128";
+  case ssse3_psign_w_128:     return "x86.ssse3.psign.w.128";
+  case ssse3_psign_d_128:     return "x86.ssse3.psign.d.128";
+  case avx2_psign_b:          return "x86.avx2.psign.b";
+  case avx2_psign_w:          return "x86.avx2.psign.w";
+  case avx2_psign_d:          return "x86.avx2.psign.d";
+  case ssse3_phadd_w_128:     return "x86.ssse3.phadd.w.128";
+  case ssse3_phadd_d_128:     return "x86.ssse3.phadd.d.128";
+  case ssse3_phadd_sw_128:    return "x86.ssse3.phadd.sw.128";
+  case avx2_phadd_w:          return "x86.avx2.phadd.w";
+  case avx2_phadd_d:          return "x86.avx2.phadd.d";
+  case avx2_phadd_sw:         return "x86.avx2.phadd.sw";
+  case ssse3_phsub_w_128:     return "x86.ssse3.phsub.w.128";
+  case ssse3_phsub_d_128:     return "x86.ssse3.phsub.d.128";
+  case ssse3_phsub_sw_128:    return "x86.ssse3.phsub.sw.128";
+  case avx2_phsub_w:          return "x86.avx2.phsub.w";
+  case avx2_phsub_d:          return "x86.avx2.phsub.d";
+  case avx2_phsub_sw:         return "x86.avx2.phsub.sw";
+  case sse2_pmulh_w:          return "x86.sse2.pmulh.w";
+  case avx2_pmulh_w:          return "x86.avx2.pmulh.w";
+  case avx512_pmulh_w_512:    return "x86.avx2.pmulh.w.512";
+  case sse2_pmulhu_w:         return "x86.sse2.pmulhu.w";
+  case avx2_pmulhu_w:         return "x86.avx2.pmulhu.w";
+  case avx512_pmulhu_w_512:   return "x86.avx2.pmulhu.w.512";
+  case sse2_pmadd_wd:         return "x86.sse2.pmadd.wd";
+  case avx2_pmadd_wd:         return "x86.avx2.pmadd.wd";
+  case avx512_pmaddw_d_512:   return "x86.avx512.pmaddw_d_512";
+  case ssse3_pmadd_ub_sw_128: return "x86.ssse3.pmadd.ub.sw.128";
+  case avx2_pmadd_ub_sw:      return "x86.avx2.pmadd.ub.sw";
+  case avx512_pmaddubs_w_512: return "x86.avx512.pmaddubs.w.512";
   }
-  os << getName() << " = " << str << *a << ", " << *b;
+  UNREACHABLE();
+}
+
+void X86IntrinBinOp::print(ostream &os) const {
+  os << getName() << " = " << getOpName(op) << " " << *a << ", " << *b;
 }
 
 StateValue X86IntrinBinOp::toSMT(State &s) const {
@@ -4026,12 +4075,34 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
   auto &bv = s[*b];
 
   switch (op) {
+  // shift by one variable
   case sse2_psrl_w:
   case sse2_psrl_d:
   case sse2_psrl_q:
   case avx2_psrl_w:
   case avx2_psrl_d:
   case avx2_psrl_q:
+  case avx512_psrl_w_512:
+  case avx512_psrl_d_512:
+  case avx512_psrl_q_512:
+  case sse2_psra_w:
+  case sse2_psra_d:
+  case avx2_psra_w:
+  case avx2_psra_d:
+  case avx512_psra_q_128:
+  case avx512_psra_q_256:
+  case avx512_psra_w_512:
+  case avx512_psra_d_512:
+  case avx512_psra_q_512:
+  case sse2_psll_w:
+  case sse2_psll_d:
+  case sse2_psll_q:
+  case avx2_psll_w:
+  case avx2_psll_d:
+  case avx2_psll_q:
+  case avx512_psll_w_512:
+  case avx512_psll_d_512:
+  case avx512_psll_q_512:
   {
     vector<StateValue> vals;
     unsigned elem_bw = bty->getChild(0).bits();
@@ -4045,36 +4116,126 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
       // if any elements in lower 64 bits is poison, the result is poison
       shift_np &= vv.non_poison;
     }
-
+    function<expr(const expr&, const expr&)> fn;
+    switch(op) {
+    case sse2_psrl_w:
+    case sse2_psrl_d:
+    case sse2_psrl_q:
+    case avx2_psrl_w:
+    case avx2_psrl_d:
+    case avx2_psrl_q:
+    case avx512_psrl_w_512:
+    case avx512_psrl_d_512:
+    case avx512_psrl_q_512:
+      fn = [&](auto a, auto b) -> expr {
+        return expr::mkIf(shift_v.uge(expr::mkUInt(elem_bw, 64)),
+                          expr::mkUInt(0, elem_bw),
+                          a.lshr(b));
+      };
+      break;
+    case sse2_psra_w:
+    case sse2_psra_d:
+    case avx2_psra_w:
+    case avx2_psra_d:
+    case avx512_psra_q_128:
+    case avx512_psra_q_256:
+    case avx512_psra_w_512:
+    case avx512_psra_d_512:
+    case avx512_psra_q_512:
+      fn = [&](auto a, auto b) -> expr {
+        return expr::mkIf(shift_v.uge(expr::mkUInt(elem_bw, 64)),
+                          expr::mkIf(a.isNegative(),
+                                     expr::mkUInt(-1, elem_bw),
+                                     expr::mkUInt( 0, elem_bw)),
+                          a.ashr(b));
+      };
+      break;
+    case sse2_psll_w:
+    case sse2_psll_d:
+    case sse2_psll_q:
+    case avx2_psll_w:
+    case avx2_psll_d:
+    case avx2_psll_q:
+    case avx512_psll_w_512:
+    case avx512_psll_d_512:
+    case avx512_psll_q_512:
+      fn = [&](auto a, auto b) -> expr {
+        return expr::mkIf(shift_v.uge(expr::mkUInt(elem_bw, 64)),
+                          expr::mkUInt(0, elem_bw),
+                          a << b);
+      };
+      break;
+    default: UNREACHABLE();
+    }
     for (unsigned i = 0, e = aty->numElementsConst(); i != e; ++i) {
       auto ai = aty->extract(av, i);
-      // ret_i.v = (ite shift.v >= elem_bw, 0, a_i.v >> shift.v) 
-      expr v = expr::mkIf(shift_v.uge(expr::mkUInt(elem_bw, 64)),
-                          expr::mkUInt(0, elem_bw),
-                          ai.value.lshr(shift_v.trunc(elem_bw)));
-      vals.emplace_back(move(v), shift_np && ai.non_poison);
+      expr shift = fn(ai.value, shift_v.trunc(elem_bw));
+      vals.emplace_back(move(shift), shift_np && ai.non_poison);
     }
     return rty->aggregateVals(vals);
   }
+  // vertical
   case sse2_pavg_w:
-  case avx2_pavg_b:
+  case sse2_pavg_b:
   case avx2_pavg_w:
+  case avx2_pavg_b:
+  case avx512_pavg_w_512:
+  case avx512_pavg_b_512:
   case mmx_padd_b:
   case mmx_padd_w:
   case mmx_padd_d:
+  case ssse3_psign_b_128:
+  case ssse3_psign_w_128:
+  case ssse3_psign_d_128:
+  case avx2_psign_b:
+  case avx2_psign_w:
+  case avx2_psign_d:
+  case avx2_psrlv_d:
+  case avx2_psrlv_d_256:
+  case avx2_psrlv_q:
+  case avx2_psrlv_q_256:
+  case avx512_psrlv_d_512:
+  case avx512_psrlv_q_512:
+  case avx512_psrlv_w_128:
+  case avx512_psrlv_w_256:
+  case avx512_psrlv_w_512:
+  case avx2_psrav_d:
+  case avx2_psrav_d_256:
+  case avx512_psrav_d_512:
+  case avx512_psrav_q_128:
+  case avx512_psrav_q_256:
+  case avx512_psrav_q_512:
+  case avx512_psrav_w_128:
+  case avx512_psrav_w_256:
+  case avx512_psrav_w_512:
+  case avx2_psllv_d:
+  case avx2_psllv_d_256:
+  case avx2_psllv_q:
+  case avx2_psllv_q_256:
+  case avx512_psllv_d_512:
+  case avx512_psllv_q_512:
+  case avx512_psllv_w_128:
+  case avx512_psllv_w_256:
+  case avx512_psllv_w_512:
+  case sse2_pmulh_w:
+  case avx2_pmulh_w:
+  case avx512_pmulh_w_512:
+  case sse2_pmulhu_w:
+  case avx2_pmulhu_w:
+  case avx512_pmulhu_w_512:
   {
     vector<StateValue> vals;
     function<expr(const expr&, const expr&)> fn;
     switch (op) {
-    case avx2_pavg_b:
-      fn = [&](auto a, auto b) -> expr {
-        return (a.zext(1) + b.zext(1) + expr::mkUInt(1, 9)).lshr(expr::mkUInt(1, 9)).trunc(8);
-      };
-      break;
     case sse2_pavg_w:
+    case sse2_pavg_b:
     case avx2_pavg_w:
+    case avx2_pavg_b:
+    case avx512_pavg_w_512:
+    case avx512_pavg_b_512:
       fn = [&](auto a, auto b) -> expr {
-        return (a.zext(1) + b.zext(1) + expr::mkUInt(1, 17)).lshr(expr::mkUInt(1, 17)).trunc(16);
+        unsigned bw = a.bits();
+        return (a.zext(1) + b.zext(1) + expr::mkUInt(1, bw + 1)).lshr(expr::mkUInt(1, bw + 1)).trunc(bw);
       };
       break;
     case mmx_padd_b:
@@ -4082,6 +4243,85 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
     case mmx_padd_d:
       fn = [&](auto a, auto b) -> expr {
         return a + b;
+      };
+      break;
+    case ssse3_psign_b_128:
+    case ssse3_psign_w_128:
+    case ssse3_psign_d_128:
+    case avx2_psign_b:
+    case avx2_psign_w:
+    case avx2_psign_d:
+      fn = [&](auto a, auto b) -> expr {
+        return expr::mkIf(b.isZero(), b,
+                          expr::mkIf(b.isNegative(),
+                                     expr::mkUInt(0, a.bits()) - a,
+                                     a));
+      };
+      break;
+    case avx2_psrlv_d:
+    case avx2_psrlv_d_256:
+    case avx2_psrlv_q:
+    case avx2_psrlv_q_256:
+    case avx512_psrlv_d_512:
+    case avx512_psrlv_q_512:
+    case avx512_psrlv_w_128:
+    case avx512_psrlv_w_256:
+    case avx512_psrlv_w_512:
+      fn = [&](auto a, auto b) -> expr {
+        unsigned bw = a.bits();
+        return expr::mkIf(b.uge(expr::mkUInt(bw, bw)),
+                          expr::mkUInt(0, bw),
+                          a.lshr(b));
+      };
+      break;
+    case avx2_psrav_d:
+    case avx2_psrav_d_256:
+    case avx512_psrav_d_512:
+    case avx512_psrav_q_128:
+    case avx512_psrav_q_256:
+    case avx512_psrav_q_512:
+    case avx512_psrav_w_128:
+    case avx512_psrav_w_256:
+    case avx512_psrav_w_512:
+      fn = [&](auto a, auto b) -> expr {
+        unsigned bw = a.bits();
+        return expr::mkIf(b.uge(expr::mkUInt(bw, bw)),
+                          expr::mkIf(a.isNegative(),
+                                     expr::mkUInt(-1, bw),
+                                     expr::mkUInt( 0, bw)),
+                          a.ashr(b));
+      };
+      break;
+    case avx2_psllv_d:
+    case avx2_psllv_d_256:
+    case avx2_psllv_q:
+    case avx2_psllv_q_256:
+    case avx512_psllv_d_512:
+    case avx512_psllv_q_512:
+    case avx512_psllv_w_128:
+    case avx512_psllv_w_256:
+    case avx512_psllv_w_512:
+      fn = [&](auto a, auto b) -> expr {
+        unsigned bw = a.bits();
+        return expr::mkIf(b.uge(expr::mkUInt(bw, bw)),
+                          expr::mkUInt(0, bw),
+                          a << b);
+      };
+      break;
+    case sse2_pmulh_w:
+    case avx2_pmulh_w:
+    case avx512_pmulh_w_512:
+      fn = [&](auto a, auto b) -> expr {
+        expr mul = a.sext(16) * b.sext(16);
+        return mul.extract(31, 16);
+      };
+      break;
+    case sse2_pmulhu_w:
+    case avx2_pmulhu_w:
+    case avx512_pmulhu_w_512:
+      fn = [&](auto a, auto b) -> expr {
+        expr mul = a.zext(16) * b.zext(16);
+        return mul.extract(31, 16);
       };
       break;
     default: UNREACHABLE();
@@ -4142,22 +4382,72 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
     for (unsigned i = startVal; i != endVal; ++i) {
       auto ai = aty->extract(av, i);
       auto bi = bty->extract(bv, i);
-      
+
       vals.emplace_back(move(ai));
       vals.emplace_back(move(bi));
     }
 
     return rty->aggregateVals(vals);
   }
-  case sse2_psrai_w:
-  case sse2_psrai_d:
-  case avx2_psrai_w:
-  case avx2_psrai_d:
-  case avx512_psrai_w_512:
-  case avx512_psrai_d_512:
-  case avx512_psrai_q_128:
-  case avx512_psrai_q_256:
-  case avx512_psrai_q_512:
+  // horizontal
+  case ssse3_phadd_w_128:
+  case ssse3_phadd_d_128:
+  case ssse3_phadd_sw_128:
+  case avx2_phadd_w:
+  case avx2_phadd_d:
+  case avx2_phadd_sw:
+  case ssse3_phsub_w_128:
+  case ssse3_phsub_d_128:
+  case ssse3_phsub_sw_128:
+  case avx2_phsub_w:
+  case avx2_phsub_d:
+  case avx2_phsub_sw: {
+    vector<StateValue> vals;
+    unsigned laneCount = shape_ret[op].first;
+    function<expr(const expr&, const expr&)> fn;
+    switch (op) {
+    case ssse3_phadd_w_128:
+    case ssse3_phadd_d_128:
+    case avx2_phadd_w:
+    case avx2_phadd_d:
+      fn = [&](auto a, auto b) -> expr {
+        return a + b;
+      };
+      break;
+    case ssse3_phadd_sw_128:
+    case avx2_phadd_sw:
+      fn = [&](auto a, auto b) -> expr {
+        return a.sadd_sat(b);
+      };
+      break;
+    case ssse3_phsub_w_128:
+    case ssse3_phsub_d_128:
+    case avx2_phsub_w:
+    case avx2_phsub_d:
+      fn = [&](auto a, auto b) -> expr {
+        return a - b;
+      };
+      break;
+    case ssse3_phsub_sw_128:
+    case avx2_phsub_sw:
+      fn = [&](auto a, auto b) -> expr {
+        return a.ssub_sat(b);
+      };
+      break;
+    default: UNREACHABLE();
+    }
+    for (unsigned i = 0; i != laneCount; i += 2) {
+      auto [a1, p1] = aty->extract(av, i);
+      auto [a2, p2] = bty->extract(av, i + 1);
+      vals.emplace_back(fn(a1, a2), p1 && p2);
+    }
+    for (unsigned i = 0; i != laneCount; i += 2) {
+      auto [b1, p1] = aty->extract(bv, i);
+      auto [b2, p2] = bty->extract(bv, i + 1);
+      vals.emplace_back(fn(b1, b2), p1 && p2);
+    }
+    return rty->aggregateVals(vals);
+  }
   case sse2_psrli_w:
   case sse2_psrli_d:
   case sse2_psrli_q:
@@ -4167,6 +4457,15 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
   case avx512_psrli_w_512:
   case avx512_psrli_d_512:
   case avx512_psrli_q_512:
+  case sse2_psrai_w:
+  case sse2_psrai_d:
+  case avx2_psrai_w:
+  case avx2_psrai_d:
+  case avx512_psrai_w_512:
+  case avx512_psrai_d_512:
+  case avx512_psrai_q_128:
+  case avx512_psrai_q_256:
+  case avx512_psrai_q_512:
   case sse2_pslli_w:
   case sse2_pslli_d:
   case sse2_pslli_q:
@@ -4238,6 +4537,33 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
       auto ai = aty->extract(av, i);
       vals.emplace_back(fn(ai.value, bv.value),
                         ai.non_poison && bv.non_poison);
+    }
+    return rty->aggregateVals(vals);
+  }
+  case sse2_pmadd_wd:
+  case avx2_pmadd_wd:
+  case avx512_pmaddw_d_512:
+  case ssse3_pmadd_ub_sw_128:
+  case avx2_pmadd_ub_sw:
+  case avx512_pmaddubs_w_512: {
+    vector<StateValue> vals;
+    for (unsigned i = 0, e = shape_ret[op].first; i != e; ++i) {
+      auto [a1, a1p] = aty->extract(av, i * 2);
+      auto [a2, a2p] = aty->extract(av, i * 2 + 1);
+      auto [b1, b1p] = bty->extract(bv, i * 2);
+      auto [b2, b2p] = bty->extract(bv, i * 2 + 1);
+
+      auto np = a1p && a2p && b1p && b2p;
+
+      if (op == sse2_pmadd_wd ||
+          op == avx2_pmadd_wd ||
+          op == avx512_pmaddw_d_512) {
+        expr v = a1.sext(16) * b1.sext(16) + a2.sext(16) * b2.sext(16);
+        vals.emplace_back(move(v), move(np));
+      } else {
+        expr v = (a1.sext(8) * b1.sext(8)).sadd_sat(a2.sext(8) * b2.sext(8));
+        vals.emplace_back(move(v), move(np));
+      }
     }
     return rty->aggregateVals(vals);
   }

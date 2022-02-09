@@ -59,12 +59,16 @@ Please contact us or submit a PR if something is missing or inaccurate.
 52. InstSimplify: incorrect fold of pointer comparison between globals (https://llvm.org/PR50208)
 53. ConstraintElimination: incorrect fold of pointer comparison (https://llvm.org/PR50280)
 54. InstCombine: incorrect select fast-math folds (https://llvm.org/PR50281)
-55. EarlyCSE incorrectly assumes that readonly functions return (https://llvm.org/PR51668)
-56. LoopIdiomRecognize: Overflow in ctlz shifting loop (https://llvm.org/PR51669)
-57. LoopUnroll: runtime check introduces branch on poison if fn call doesn't return (https://llvm.org/PR51670)
-58. MergeICmps reorders comparisons and introduces UB (https://llvm.org/PR51845)
-59. Sink: moves calls that may not return (https://llvm.org/PR51846)
-60. LIVM introduces load in writeonly function (https://llvm.org/PR51906)
+55. LoopIdiomRecognize: Overflow in ctlz shifting loop (https://llvm.org/PR51669)
+56. LoopUnroll: runtime check introduces branch on poison if fn call doesn't return (https://llvm.org/PR51670)
+57. MergeICmps reorders comparisons and introduces UB (https://llvm.org/PR51845)
+58. Sink: moves calls that may not return (https://llvm.org/PR51846)
+59. LIVM introduces load in writeonly function (https://llvm.org/PR51906)
+60. InstSimplify incorrectly folds signed comparisons of 'gep inbounds' (https://llvm.org/PR52429)
+61. LoadStoreVectorizer assumes non-willreturn calls always return (https://llvm.org/PR52950)
+62. SROA sub-vector memcpy w/subsequent load loses the store (https://llvm.org/PR52971)
+63. NewGVN miscompiles with equal instructions modulo attributes (https://llvm.org/PR53218)
+64. InstCombine miscompiles combination of signed comparisons (https://llvm.org/PR53252)
 
 
 ### Bugs found in Z3
