@@ -114,10 +114,13 @@ int main()
 			vals2 = vectorRandomizer<op1Bitwidth, 40>(vals2);
 			
 			retVec = funcPointer(vals, vals2);
-			
+
 			llvm::Function* tgtFunc = generateReturnFunction<retBitwidth>(retVec, "tgt");
 			llvm::Function* srcFunc = generateCallFunction<op0Bitwidth, op1Bitwidth>(vals, vals2, intrinsicFunction, "src");
 			compareFunctions(*srcFunc, *tgtFunc, TLI);
+
+			srcFunc->print(errs());
+			tgtFunc->print(errs());
 
 			tgtFunc->eraseFromParent();
 			srcFunc->eraseFromParent();
