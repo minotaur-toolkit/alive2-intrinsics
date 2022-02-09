@@ -38,7 +38,7 @@ int main()
 	TheModule->setDataLayout(JITCompiler->getDataLayout());
 
 	// All intrinsic functions must be added below (probably in some for loop)	
-	for(int i = 0; i < 11; ++i)
+	for(unsigned i = 0; i < IR::X86IntrinBinOp::numOfX86Intrinsics; ++i)
 	{
 		llvm::Function* testFunc = llvm::Intrinsic::getDeclaration(TheModule.get(), TesterX86IntrinBinOp::intrin_id.at(i));
 		generateCallFunctionFromFunction(testFunc, "func" + std::to_string(i));
@@ -70,10 +70,17 @@ int main()
 	//This variable below is the only variable that needs to be manually changed in main
 	//(with the exception of the ranges on vectorRandomizer in the for loop)
 	
-	static_for<8>([&](auto index) {
-		constexpr IR::X86IntrinBinOp::Op op = getOp<index.value>();
-		
-		constexpr unsigned timesToLoop = 2;	
+	static_for<IR::X86IntrinBinOp::numOfX86Intrinsics>([&](auto index) {
+		if constexpr(	(index >= 9 && index < 18) || 
+				(index >= 27 && index < 36) || 
+				(index >= 54 && index < 63) ||
+				(index >= 81 && index < 90))
+			return;
+		else
+		{
+		constexpr IR::X86IntrinBinOp::Op op = getOp<index.value>();	
+
+		constexpr unsigned timesToLoop = 1;	
 
 		//Bitsize is the number of bits in the entire vector
 		constexpr unsigned op0BitSize = bitSizeOp0<op>();
@@ -132,7 +139,7 @@ int main()
 			"\nNum failed: " << num_failed << 
 			"\nNum errors: " << num_errors << "\n";	
 
-
+		}
 	});	
 
 	return 0;
