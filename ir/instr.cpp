@@ -4753,17 +4753,15 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
     auto avty = static_cast<const VectorType*>(aty);
     vector<StateValue> vals;
     unsigned laneCount = shape_ret[op].first;
-    for (unsigned i = 0, e = laneCount; i != e; ++i) {
-      auto b = bty->extract(bv, i);
-      expr id = (b.value & expr::mkUInt(0x0F, 8)) + (expr::mkUInt(i & 0x30, 8));
-      auto r = avty->extract(av, id);
-      auto ai = expr::mkIf(b.value.extract(7, 7) == expr::mkUInt(0, 1),
-                           r.value,
+    for (unsigned i = 0; i != laneCount; ++i) {
+      auto [b, bp] = bty->extract(bv, i);
+      expr id = (b & expr::mkUInt(0x0F, 8)) + (expr::mkUInt(i & 0x30, 8));
+      auto [r, rp] = avty->extract(av, id);
+      auto ai = expr::mkIf(b.extract(7, 7) == expr::mkUInt(0, 1), r,
                            expr::mkUInt(0, 8));
 
-      vals.emplace_back(move(ai), b.non_poison && r.non_poison);
+      vals.emplace_back(move(ai), bp && rp);
     }
-
     return rty->aggregateVals(vals);
   }
   case mmx_punpckhbw:
