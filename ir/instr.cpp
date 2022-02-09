@@ -4731,23 +4731,16 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
   {
     auto avty = static_cast<const VectorType*>(aty);
     vector<StateValue> vals;
-    unsigned c;
-    switch (op) {
-    case ssse3_pshuf_b_128: c = 16; break;
-    case avx2_pshuf_b: c = 32; break;
-    default: UNREACHABLE();
-    }
-    for (unsigned i = 0, e = c; i != e; ++i) {
-      auto b = (bty->extract(bv, i).value);
-      auto r = avty->extract(av, b & expr::mkUInt(127, 8));
-      auto ai = expr::mkIf(b.extract(7, 7) == expr::mkUInt(0, 1),
-                            r.value,
-                            expr::mkUInt(0, 8));
-      auto pi = expr::mkIf(b.extract(7, 7) == expr::mkUInt(0, 1),
-                            b.ule(expr::mkUInt(31, 8)) && r.non_poison,
-                            true);
+    unsigned laneCount = shape_ret[op].first;
+    for (unsigned i = 0, e = laneCount; i != e; ++i) {
+      auto b = bty->extract(bv, i);
+      expr id = (b.value & expr::mkUInt(0x0F, 8)) + (expr::mkUInt(i & 0x30, 8));
+      auto r = avty->extract(av, id);
+      auto ai = expr::mkIf(b.value.extract(7, 7) == expr::mkUInt(0, 1),
+                           r.value,
+                           expr::mkUInt(0, 8));
 
-      vals.emplace_back(move(ai), move(pi));
+      vals.emplace_back(move(ai), b.non_poison && r.non_poison);
     }
 
     return rty->aggregateVals(vals);
