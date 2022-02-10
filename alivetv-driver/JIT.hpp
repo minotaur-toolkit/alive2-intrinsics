@@ -24,6 +24,12 @@
 #include "llvm/IR/LLVMContext.h"
 #include <memory>
 
+// For Tester Namespace
+#include "llvm/Support/TargetSelect.h"
+#include "llvm/MC/TargetRegistry.h"
+#include "llvm/Target/TargetOptions.h"
+#include "x86Intrin.hpp"
+
 #ifndef JIT_H
 #define JIT_H
 
@@ -116,5 +122,49 @@ public:
 
 } // end namespace orc
 } // end namespace llvm
+
+namespace Tester
+{
+  std::unique_ptr<llvm::orc::JIT> generateIntrinsicJIT()
+  {
+    //Initialize native target information for Just In Time Compiler        
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmParser();
+    llvm::InitializeNativeTargetAsmPrinter();
+    
+    //Initialize Just In Time Compiler
+    auto JITInit = llvm::orc::JIT::Create();
+    
+    //Below executes if initializing JIT failed
+    if (auto E = JITInit.takeError()) {
+      errs() << "Problem with JIT " << toString(std::move(E)) << "\n";
+      exit(-1);
+    }
+    std::unique_ptr<llvm::orc::JIT> JITCompiler = std::move(*JITInit);
+    
+    //Set data layout of module
+    TheModule->setDataLayout(JITCompiler->getDataLayout());
+    
+    // All intrinsic functions must be added below (probably in some for loop)      
+    for(unsigned i = 0; i < IR::X86IntrinBinOp::numOfX86Intrinsics; ++i)
+    {
+    	llvm::Function* testFunc = llvm::Intrinsic::getDeclaration(TheModule.get(), TesterX86IntrinBinOp::intrin_id.at(i));
+    	generateCallFunctionFromFunction(testFunc, "func" + std::to_string(i));
+    }
+    
+    //Debug printing for module
+    TheModule->print(outs(), nullptr);
+    
+    //Add intrinsic module to JIT
+    auto JITadd = JITCompiler->addModule(llvm::orc::ThreadSafeModule(std::move(TheModule), std::move(TheContext)));
+    
+    //Check if adding module to JIT errored
+    if(JITadd) {
+      errs() << "Problem adding module to JIT " << JITadd << "\n";
+      exit(-1);
+    }
+    return JITCompiler;
+  }
+} // end namespace Tester
 
 #endif 
