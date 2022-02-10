@@ -25,7 +25,10 @@ int main()
   smt_init.emplace();
   
   // Loop that evaluates every intrinsic
-  static_for<IR::X86IntrinBinOp::numOfX86Intrinsics>([&](auto index) 
+  constexpr unsigned loopCount = IR::X86IntrinBinOp::numOfX86Intrinsics;
+  uint64_t numberOfTestsPerformed = 0;
+  uint64_t numberOfIntrinsicsTested = 0;
+  static_for<loopCount>([&](auto index) 
   {
     if constexpr(index >= 9 && index < 18) // Ignores MMX instructions
       return;
@@ -33,7 +36,7 @@ int main()
     {
       constexpr IR::X86IntrinBinOp::Op op = getOp<index.value>();	
       
-      constexpr unsigned timesToLoop = 100;	
+      constexpr unsigned timesToLoop = 1;	
       
       //Bitsize is the number of bits in the entire vector
       constexpr unsigned op0BitSize = bitSizeOp0<op>();
@@ -67,7 +70,8 @@ int main()
       
       //Declare the intrinsic to be used
       llvm::Function* intrinsicFunction = llvm::Intrinsic::getDeclaration(TheModule.get(), TesterX86IntrinBinOp::intrin_id.at((int) op));
-      
+     
+
       //Loop that tests for the equality of both functions for equal inputs	
       for(int i = 0; i != timesToLoop; ++i) {
       	vals = vectorRandomizer<op0Bitwidth>(vals);
@@ -83,23 +87,30 @@ int main()
       
       	llvm::Function* tgtFunc = generateReturnFunction<retBitwidth>(retVec, "tgt");
       	llvm::Function* srcFunc = generateCallFunction<op0Bitwidth, op1Bitwidth>(vals, vals2, intrinsicFunction, "src");
-      	compareFunctions(*srcFunc, *tgtFunc, TLI);
-      	// Print LLVM IR
-      	srcFunc->print(outs());
-      	tgtFunc->print(outs());
-      
+      	
+	const unsigned currentNumCorrect = num_correct;
+	compareFunctions(*srcFunc, *tgtFunc, TLI);
+      	
+	// Print LLVM IR if failed test
+	if (currentNumCorrect + 1 != num_correct)
+	{
+      	  srcFunc->print(outs());
+      	  tgtFunc->print(outs());
+	}
+
       	tgtFunc->eraseFromParent();
       	srcFunc->eraseFromParent();
+        ++numberOfTestsPerformed;
       }
-      
-      std::cout << "Ran " << timesToLoop << " tests." << 
-      	"\nNum correct: " << num_correct << 
-      	"\nNum unsound: " << num_unsound << 
-      	"\nNum failed: " << num_failed << 
-      	"\nNum errors: " << num_errors << "\n";	
-      
+      ++numberOfIntrinsicsTested;
     }
   });	
+
+  std::cout << "Ran " << numberOfTestsPerformed << " tests on " << numberOfIntrinsicsTested << " intrinsics." << 
+    "\nNum correct: " << num_correct << 
+    "\nNum unsound: " << num_unsound << 
+    "\nNum failed: " << num_failed << 
+    "\nNum errors: " << num_errors << "\n";	
   
   return 0;
 }

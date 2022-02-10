@@ -151,7 +151,7 @@ unsigned num_errors = 0;
 
 bool compareFunctions(llvm::Function &F1, llvm::Function &F2,
                       llvm::TargetLibraryInfoWrapperPass &TLI) {
-  auto r = verify(F1, F2, TLI, !opt_quiet, opt_always_verify);
+  auto r = verify(F1, F2, TLI, opt_quiet, opt_always_verify);
 	
   if (r.status == Results::ERROR) {
     *out << "ERROR: " << r.error;
@@ -175,7 +175,7 @@ bool compareFunctions(llvm::Function &F1, llvm::Function &F2,
     break;
 
   case Results::CORRECT:
-    *out << "Transformation seems to be correct!\n\n";
+//  *out << "Transformation seems to be correct!\n\n";
     ++num_correct;
     break;
 

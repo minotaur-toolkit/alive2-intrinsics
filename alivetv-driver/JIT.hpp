@@ -74,7 +74,6 @@ public:
 
     auto ES = std::make_unique<ExecutionSession>(std::move(*EPC));
     auto triple = ES->getExecutorProcessControl().getTargetTriple();
-    std::cout << triple.getArchName().str() << " " << triple.getVendorName().str() << " " << triple.getOSName().str() << std::endl;
 
     auto expectedMachineBuilder = llvm::orc::JITTargetMachineBuilder::detectHost();
     //Below executes if host couldn't be detected
@@ -153,7 +152,7 @@ namespace Tester
     }
     
     //Debug printing for module
-    TheModule->print(outs(), nullptr);
+    //TheModule->print(outs(), nullptr);
     
     //Add intrinsic module to JIT
     auto JITadd = JITCompiler->addModule(llvm::orc::ThreadSafeModule(std::move(TheModule), std::move(TheContext)));
