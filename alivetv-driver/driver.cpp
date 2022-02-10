@@ -25,17 +25,15 @@ int main()
   smt_init.emplace();
   
   // Loop that evaluates every intrinsic
-  static_for<IR::X86IntrinBinOp::numOfX86Intrinsics>([&](auto index) {
-    if constexpr((index >= 9 && index < 18)  || 
-    		 (index >= 27 && index < 36) || 
-    		 (index >= 54 && index < 63) ||
-    		 (index >= 81 && index < 90))
+  static_for<IR::X86IntrinBinOp::numOfX86Intrinsics>([&](auto index) 
+  {
+    if constexpr(index >= 9 && index < 18) // Ignores MMX instructions
       return;
     else // If intrinsic is supported
     {
       constexpr IR::X86IntrinBinOp::Op op = getOp<index.value>();	
       
-      constexpr unsigned timesToLoop = 1;	
+      constexpr unsigned timesToLoop = 100;	
       
       //Bitsize is the number of bits in the entire vector
       constexpr unsigned op0BitSize = bitSizeOp0<op>();
@@ -62,7 +60,7 @@ int main()
       	std::conditional_t<retBitSize != 512, std::conditional_t<retBitSize == 256, __m256i, __m128i>, __m512i>
       	(*opFunctionType)
       	(std::conditional_t<op0BitSize != 512, std::conditional_t<op0BitSize == 256, __m256i, __m128i>, __m512i>,
-      	std::conditional_t<op1BitSize != 512, std::conditional_t<op1BitSize == 256, __m256i, __m128i>, __m512i>);
+      	std::conditional_t<op1BitSize != 512, std::conditional_t<op1BitSize == 256, __m256i, std::conditional_t<op1BitSize == 32, int32_t, __m128i>>, __m512i>);
       
       auto* funcPointer = reinterpret_cast<opFunctionType>(JITCompiler->getFuncAddress("func" + std::to_string(index.value)));
       //This jank might truly be real honest to god undefined behavior above, someone help	
@@ -73,8 +71,14 @@ int main()
       //Loop that tests for the equality of both functions for equal inputs	
       for(int i = 0; i != timesToLoop; ++i) {
       	vals = vectorRandomizer<op0Bitwidth>(vals);
-      	vals2 = vectorRandomizer<op1Bitwidth, 40>(vals2);
-      	
+	if constexpr(op1BitSize == 32)
+	{
+          vals2 = integerRandomizer<40>();
+	}
+	else
+	{
+          vals2 = vectorRandomizer<op1Bitwidth, 40>(vals2);
+	}
       	retVec = funcPointer(vals, vals2);
       
       	llvm::Function* tgtFunc = generateReturnFunction<retBitwidth>(retVec, "tgt");

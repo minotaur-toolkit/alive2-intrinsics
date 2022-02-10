@@ -58,6 +58,7 @@ constexpr int bitSizeOp0()
 }
 
 
+// Operator 1 may have only single integers as input
 template<binOp op>
 constexpr int bitSizeOp1() 
 {
@@ -65,7 +66,8 @@ constexpr int bitSizeOp1()
   constexpr int bitwidth = return_shape_op1<op>().second;
   constexpr int bitSize = lanes * bitwidth;
   
-  static_assert((bitSize == 128) || (bitSize == 256) || (bitSize == 512));
+  static_assert(  (bitSize == 32) ||
+		  (bitSize == 128) || (bitSize == 256) || (bitSize == 512));
   return bitSize;
 }
 

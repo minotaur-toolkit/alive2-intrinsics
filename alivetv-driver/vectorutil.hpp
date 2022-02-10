@@ -19,8 +19,10 @@ constexpr unsigned bitSize()
     return 256;
   else if constexpr (std::is_same_v<type, __m128i>)
     return 128;
+  else if constexpr (std::is_same_v<type, int32_t>)
+    return 32;
   else
-    throw std::invalid_argument("bitSize: Must be a type of __m128i, __m256i, or __m512i");
+    throw std::invalid_argument("bitSize: Must be a type of __m128i, __m256i, __m512i, or int32_t");
 }
 
 //Function that prints a vector with a specified bitwidth
@@ -230,9 +232,9 @@ type constexpr vectorRandomizer(type input)
 
 	
 template<int bitSize>
-std::variant<__m128i, __m256i, __m512i>  constexpr returnVectorType()
+std::variant<__m128i, __m256i, __m512i, int32_t>  constexpr returnVectorType()
 {
-  std::variant<__m128i, __m256i, __m512i> vectors;
+  std::variant<__m128i, __m256i, __m512i, int32_t> vectors;
   if constexpr (bitSize == 128)
   {
     vectors = _mm_setzero_si128();
@@ -246,6 +248,12 @@ std::variant<__m128i, __m256i, __m512i>  constexpr returnVectorType()
   else if constexpr (bitSize == 512)
   {
     vectors = _mm512_setzero_epi32();
+    return vectors;
+  }
+  else if constexpr (bitSize == 32)
+  {
+    constexpr int32_t val = 0;
+    vectors = val;
     return vectors;
   }
   else
@@ -262,8 +270,19 @@ int constexpr vectorTypeIndex()
     return 1;
   else if constexpr (bitSize == 512)
     return 2;
+  else if constexpr (bitSize == 32)
+    return 3;
   else
     throw std::invalid_argument("vectorTypeIndex must take in either 128, 256, or 512");
 }
 
+template<unsigned upper = 0>
+int32_t constexpr integerRandomizer()
+{
+  constexpr int bitwidth = 32;
+  if constexpr(upper != 0)
+    return Randomizer::randInt<bitwidth, upper, int32_t>();
+  else if constexpr (upper == 0)
+    return Randomizer::randInt<bitwidth, int32_t>();
+}
 #endif

@@ -69,8 +69,16 @@ Function* generateReturnFunction(type input, std::string name) {
 template<unsigned bitwidthOp1, unsigned bitwidthOp2, typename typeOp1, typename typeOp2>
 Function* generateCallFunction(typeOp1 input1, typeOp2 input2, Function* func, std::string name) {
   std::unique_ptr<IntVectorExprAST> vecExprOp1 = generateVector<bitwidthOp1>(input1);
-  std::unique_ptr<IntVectorExprAST> vecExprOp2 = generateVector<bitwidthOp2>(input2);
-  
+  std::unique_ptr<ExprAST> vecExprOp2;
+  if constexpr(std::is_same_v<typeOp2, int32_t>)
+  {
+    vecExprOp2 = std::make_unique<IntExprAST>(input2, IRint32_t);
+  }
+  else
+  {
+    vecExprOp2 = generateVector<bitwidthOp2>(input2);
+  }
+
   std::vector<std::unique_ptr<ExprAST>> callVec;
   callVec.push_back(std::move(vecExprOp1));
   callVec.push_back(std::move(vecExprOp2));
