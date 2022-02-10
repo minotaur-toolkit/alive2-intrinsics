@@ -5190,13 +5190,13 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
     }
     for (unsigned j = 0; j != laneCount / groupsize; j ++) {
       for (unsigned i = 0; i != groupsize; i += 2) {
-        auto [a1, p1] = aty->extract(av, i + j * groupsize);
-        auto [a2, p2] = bty->extract(av, i + 1 + j * groupsize);
+        auto [a1, p1] = aty->extract(av, j * groupsize + i);
+        auto [a2, p2] = aty->extract(av, j * groupsize + i + 1);
         vals.emplace_back(fn(a1, a2), p1 && p2);
       }
       for (unsigned i = 0; i != groupsize; i += 2) {
-        auto [b1, p1] = aty->extract(bv, i + j * groupsize);
-        auto [b2, p2] = bty->extract(bv, i + 1 + j * groupsize);
+        auto [b1, p1] = aty->extract(bv, j * groupsize + i);
+        auto [b2, p2] = aty->extract(bv, j * groupsize + i + 1);
         vals.emplace_back(fn(b1, b2), p1 && p2);
       }
     }
