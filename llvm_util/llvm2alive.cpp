@@ -1392,9 +1392,9 @@ public:
       case llvm::Intrinsic::x86_sse2_psra_d:
         op = X86IntrinBinOp::sse2_psra_d; break;
       case llvm::Intrinsic::x86_avx2_psra_w:
-        op = X86IntrinBinOp::sse2_psra_w; break;
+        op = X86IntrinBinOp::avx2_psra_w; break;
       case llvm::Intrinsic::x86_avx2_psra_d:
-        op = X86IntrinBinOp::sse2_psra_d; break;
+        op = X86IntrinBinOp::avx2_psra_d; break;
       case llvm::Intrinsic::x86_avx512_psra_q_128:
         op = X86IntrinBinOp::avx512_psra_q_128; break;
       case llvm::Intrinsic::x86_avx512_psra_q_256:
