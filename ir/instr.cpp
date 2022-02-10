@@ -4790,6 +4790,7 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
   case avx2_phsub_sw: {
     vector<StateValue> vals;
     unsigned laneCount = shape_ret[op].first;
+    unsigned groupsize = 128/shape_ret[op].second;
     function<expr(const expr&, const expr&)> fn;
     switch (op) {
     case ssse3_phadd_w_128:
@@ -4822,15 +4823,17 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
       break;
     default: UNREACHABLE();
     }
-    for (unsigned i = 0; i != laneCount; i += 2) {
-      auto [a1, p1] = aty->extract(av, i);
-      auto [a2, p2] = bty->extract(av, i + 1);
-      vals.emplace_back(fn(a1, a2), p1 && p2);
-    }
-    for (unsigned i = 0; i != laneCount; i += 2) {
-      auto [b1, p1] = aty->extract(bv, i);
-      auto [b2, p2] = bty->extract(bv, i + 1);
-      vals.emplace_back(fn(b1, b2), p1 && p2);
+    for (unsigned j = 0; j != laneCount / groupsize; j ++) {
+      for (unsigned i = 0; i != groupsize; i += 2) {
+        auto [a1, p1] = aty->extract(av, i + j * groupsize);
+        auto [a2, p2] = bty->extract(av, i + 1 + j * groupsize);
+        vals.emplace_back(fn(a1, a2), p1 && p2);
+      }
+      for (unsigned i = 0; i != groupsize; i += 2) {
+        auto [b1, p1] = aty->extract(bv, i + j * groupsize);
+        auto [b2, p2] = bty->extract(bv, i + 1 + j * groupsize);
+        vals.emplace_back(fn(b1, b2), p1 && p2);
+      }
     }
     return rty->aggregateVals(vals);
   }
@@ -4947,7 +4950,7 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
         expr v = a1.sext(16) * b1.sext(16) + a2.sext(16) * b2.sext(16);
         vals.emplace_back(move(v), move(np));
       } else {
-        expr v = (a1.sext(8) * b1.sext(8)).sadd_sat(a2.sext(8) * b2.sext(8));
+        expr v = (a1.zext(8) * b1.sext(8)).sadd_sat(a2.zext(8) * b2.sext(8));
         vals.emplace_back(move(v), move(np));
       }
     }
