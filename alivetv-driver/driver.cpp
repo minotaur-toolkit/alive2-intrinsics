@@ -6,6 +6,8 @@
 #include "JIT.hpp"
 #include "compareFunctions.cpp"
 #include "testLoop.hpp"
+#include "progressBar.hpp"
+#include <chrono>
 
 int main()
 {		
@@ -24,10 +26,15 @@ int main()
   out = &std::cout;
   smt_init.emplace();
   
+  
   // Loop that evaluates every intrinsic
   constexpr unsigned loopCount = IR::X86IntrinBinOp::numOfX86Intrinsics;
   uint64_t numberOfTestsPerformed = 0;
   uint64_t numberOfIntrinsicsTested = 0;
+  ProgressBar progressBar(loopCount - 9); // Subtract MMX instructions
+  
+  auto start = std::chrono::steady_clock::now();
+
   static_for<loopCount>([&](auto index) 
   {
     if constexpr(index >= 9 && index < 18) // Ignores MMX instructions
@@ -36,7 +43,7 @@ int main()
     {
       constexpr IR::X86IntrinBinOp::Op op = getOp<index.value>();	
       
-      constexpr unsigned timesToLoop = 1;	
+      constexpr unsigned timesToLoop = 10000;	
       
       //Bitsize is the number of bits in the entire vector
       constexpr unsigned op0BitSize = bitSizeOp0<op>();
@@ -103,10 +110,15 @@ int main()
         ++numberOfTestsPerformed;
       }
       ++numberOfIntrinsicsTested;
+      progressBar.update(numberOfIntrinsicsTested);
     }
   });	
 
-  std::cout << "Ran " << numberOfTestsPerformed << " tests on " << numberOfIntrinsicsTested << " intrinsics." << 
+  auto end = std::chrono::steady_clock::now();
+  auto minutesTaken = std::chrono::duration_cast<std::chrono::minutes>(end - start);
+
+  std::cout << "\nRan " << numberOfTestsPerformed << " tests on " << numberOfIntrinsicsTested << " intrinsics." << 
+    "\nNumber of minutes taken: " << minutesTaken.count() <<
     "\nNum correct: " << num_correct << 
     "\nNum unsound: " << num_unsound << 
     "\nNum failed: " << num_failed << 
