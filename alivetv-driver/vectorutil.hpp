@@ -115,12 +115,8 @@ type constexpr vectorRandomizer(type input)
   else
     throw std::invalid_argument("vectorRandomizer: Bitwidth must be powers of 2 between 2 and 64");
   
-  if constexpr(upper == 0)
-    for(unsigned i = 0; i < vectorBitSize / bitwidth; ++i)
-      std::visit([&](auto&& arg){arg[i] = Randomizer::randInt<bitwidth, int64_t>();}, vals);	//It works, but int64_t shouldn't be here
-  else if constexpr(upper != 0)
-    for(unsigned i = 0; i < vectorBitSize / bitwidth; ++i)
-      std::visit([&](auto&& arg){arg[i] = Randomizer::randInt<bitwidth, upper, int64_t>();}, vals);	//It works, but int64_t shouldn't be here
+  for(unsigned i = 0; i < vectorBitSize / bitwidth; ++i)
+    std::visit([&](auto&& arg){arg[i] = Randomizer::randInt<bitwidth, upper, int64_t>();}, vals);	//It works, but int64_t shouldn't be here
   
   
   type returnVector;
