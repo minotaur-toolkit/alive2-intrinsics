@@ -24,5 +24,5 @@ struct ProgressBar
 private:
   int progress = 0;
   const int maxProgress;
-  const int barWidth = 100;
+  const int barWidth = 70;
 };
