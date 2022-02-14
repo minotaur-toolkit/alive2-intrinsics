@@ -82,8 +82,7 @@ int main()
       llvm::Function* intrinsicFunction = llvm::Intrinsic::getDeclaration(TheModule.get(), TesterX86IntrinBinOp::intrin_id.at((int) op));
      
       // Map that counts how often certain end results are reached
-      std::unordered_map<VectorWrapper<returnType>, int, VectorWrapperHashFn> resultMap;
-	
+      std::unordered_map<VectorWrapper<retBitwidth, retBitSize, returnType>, int, VectorWrapperHashFn> resultMap;
 
       //Loop that tests for the equality of both functions for equal inputs	
       for(int i = 0; i != timesToLoop; ++i) {
@@ -113,7 +112,7 @@ int main()
 
 	if constexpr (enableDebug)
 	{
-          VectorWrapper wrappedVec(retVec, retBitwidth, retBitSize);
+          VectorWrapper<retBitwidth, retBitSize, returnType> wrappedVec(retVec);
 	  if(resultMap.contains(wrappedVec))
 	    resultMap[wrappedVec] = resultMap[wrappedVec] + 1;
 	  else
@@ -128,13 +127,29 @@ int main()
       {
         std::cout << "Number of repetitions for func" << index.value << ": ";
         int numberOfRepetitions = 0;
+	VectorWrapper<retBitwidth, retBitSize, returnType> mostCommonVec;
+	int mostNumberOfAppearances = 0;
         for(auto it : resultMap)
+	{
           numberOfRepetitions += it.second;
-        std::cout << numberOfRepetitions << "\n";
+	  if(it.second > mostNumberOfAppearances)
+	  {
+            mostNumberOfAppearances = it.second;
+	    mostCommonVec = it.first;
+	  }
+	}
+	std::cout << numberOfRepetitions;
+        if(numberOfRepetitions > 0)
+	{
+	  std::cout << " | Vector: ";
+	  mostCommonVec.printVec();
+	}
+	std::cout << "\n";
       }
 
       ++numberOfIntrinsicsTested;
-      progressBar.update(numberOfIntrinsicsTested);
+      if constexpr (!enableDebug)
+        progressBar.update(numberOfIntrinsicsTested);
     }
   });	
 

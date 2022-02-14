@@ -3,24 +3,25 @@
 #ifndef VECTORWRAPPER_H
 #define VECTORWRAPPER_H
 
-template<typename T>
+template<unsigned ibitWidth, unsigned ibitSize, typename T>
 struct VectorWrapper
 {
-  VectorWrapper(T input, unsigned inputBitWidth, unsigned inputBitSize)
-    	 : vector(input), bitSize(inputBitSize), bitWidth(inputBitWidth)
+  VectorWrapper() {}
+	
+  VectorWrapper(T input) : vector(input)
   {
     std::variant<int64_t*, int32_t*, int16_t*, int8_t*> valsVariant;
     
-    if (bitWidth == 64)
+    if constexpr (bitWidth == 64)
       valsVariant = (int64_t*)&input;
-    else if (bitWidth == 32)
+    else if constexpr (bitWidth == 32)
       valsVariant = (int32_t*)&input;
-    else if (bitWidth == 16)
+    else if constexpr (bitWidth == 16)
       valsVariant = (int16_t*)&input;
-    else if (bitWidth == 8)
+    else if constexpr (bitWidth == 8)
       valsVariant = (int8_t*)&input;
     else
-      throw std::invalid_argument("Bitwidth must be powers of 2 between 2 and 64");
+      throw std::invalid_argument("VC: Bitwidth must be powers of 2 between 2 and 64");
   
     for(unsigned i = 0; i < bitSize / bitWidth; ++i)
       std::visit([&](auto&& arg){vals.push_back(static_cast<unsigned>(arg[i]));}, valsVariant);
@@ -37,16 +38,21 @@ struct VectorWrapper
     return true;
   }
 
+  void printVec()
+  {
+    ::printVec<bitWidth>(vector);
+  }
+
   T vector;
-  const unsigned bitSize;
-  const unsigned bitWidth;
+  static constexpr unsigned bitSize = ibitSize;
+  static constexpr unsigned bitWidth = ibitWidth;
   std::vector<unsigned> vals;
 };
 
 struct VectorWrapperHashFn
 {
-    template <class T>
-    std::size_t operator() (const VectorWrapper<T> &vec) const
+    template <unsigned iBW, unsigned iBS, class T>
+    std::size_t operator() (const VectorWrapper<iBW, iBS, T> &vec) const
     {
       unsigned retVal = 0;
       for(unsigned i = 0; i < vec.bitSize / vec.bitWidth; ++i)

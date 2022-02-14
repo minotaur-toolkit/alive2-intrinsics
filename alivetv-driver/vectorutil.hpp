@@ -43,9 +43,10 @@ void constexpr printVec(type input)
   
   constexpr unsigned vectorBitSize = bitSize<type>();
   
-  
+  std::cout << "< "; 
   for(unsigned i = 0; i < vectorBitSize / bitwidth; ++i)
-    std::visit([&](auto&& arg){std::cout << arg[i] << "\n";}, vals);
+    std::visit([&](auto&& arg){std::cout << arg[i] << " ";}, vals);
+  std::cout << ">\n";
 }
 //Function that prints a value mismatch from two operands
 template<unsigned bitwidthOp1, unsigned bitwidthOp2, unsigned bitwidthRet, typename typeOp1, typename typeOp2, typename typeRet>
