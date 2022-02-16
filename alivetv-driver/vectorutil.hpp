@@ -98,7 +98,7 @@ bool constexpr areEqual(type input1, type input2)
   return true;
 }
 
-template<unsigned bitwidth, unsigned upper = 0, typename type>
+template<unsigned bitwidth, typename type>
 type constexpr vectorRandomizer(type input) 
 {	
   constexpr int vectorBitSize = bitSize<type>();
@@ -115,9 +115,25 @@ type constexpr vectorRandomizer(type input)
   else
     throw std::invalid_argument("vectorRandomizer: Bitwidth must be powers of 2 between 2 and 64");
   
+  int32_t pathToTake = Randomizer::randInt<32, 7, int32_t>();
+
   for(unsigned i = 0; i < vectorBitSize / bitwidth; ++i)
-    std::visit([&](auto&& arg){arg[i] = Randomizer::randInt<bitwidth, upper, int64_t>();}, vals);	//It works, but int64_t shouldn't be here
-  
+  {
+    if(pathToTake == 0)  // Full range of integers, no upper bound
+      std::visit([&](auto&& arg){arg[i] = Randomizer::randInt<bitwidth, 0, int64_t>();}, vals);	//It works, but int64_t shouldn't be here
+    else if(pathToTake == 1)  // Upper bound of 65 for shifts
+      std::visit([&](auto&& arg){arg[i] = Randomizer::randInt<bitwidth, 65, int64_t>();}, vals);
+    else if(pathToTake == 2) // Upper bound of 33 for smaller shifts
+      std::visit([&](auto&& arg){arg[i] = Randomizer::randInt<bitwidth, 33, int64_t>();}, vals);
+    else if(pathToTake == 3)  // Upper bound of 17 for shifts
+      std::visit([&](auto&& arg){arg[i] = Randomizer::randInt<bitwidth, 17, int64_t>();}, vals);
+    else if(pathToTake == 4) // Upper bound of 9 for shuffles
+      std::visit([&](auto&& arg){arg[i] = Randomizer::randInt<bitwidth, 9, int64_t>();}, vals);
+    else if(pathToTake == 5) // Upper bound of 5 for smaller shuffles
+      std::visit([&](auto&& arg){arg[i] = Randomizer::randInt<bitwidth, 5, int64_t>();}, vals);
+    else if(pathToTake == 6) // Pre-determined interesting values
+      std::visit([&](auto&& arg){arg[i] = Randomizer::randIntInteresting<int64_t>();}, vals);
+  }
   
   type returnVector;
   

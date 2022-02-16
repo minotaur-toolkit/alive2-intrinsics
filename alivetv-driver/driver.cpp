@@ -93,7 +93,7 @@ int main()
 	}
 	else
 	{
-          vals2 = vectorRandomizer<op1Bitwidth, 40>(vals2);
+          vals2 = vectorRandomizer<op1Bitwidth>(vals2);
 	}
       	retVec = funcPointer(vals, vals2);
       

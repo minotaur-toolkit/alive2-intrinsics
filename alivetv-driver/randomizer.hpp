@@ -1,7 +1,7 @@
 #include <variant>
 #include <random>
 #include <stdexcept>
-#include <iostream> //TESTING ONLY; REMOVE
+#include <climits>
 
 #ifndef RANDOMIZER_H
 #define RANDOMIZER_H
@@ -14,8 +14,48 @@ private:
   static std::uniform_int_distribution<int32_t> dist32i;
   static std::uniform_int_distribution<int16_t> dist16i;
   static std::uniform_int_distribution<int8_t> dist8i;
+  static constexpr std::array<uint64_t, 37> interestingValues = {
+    static_cast<uint64_t>(-10),
+    static_cast<uint64_t>(-9),
+    static_cast<uint64_t>(-8),
+    static_cast<uint64_t>(-7),
+    static_cast<uint64_t>(-6),
+    static_cast<uint64_t>(-5),
+    static_cast<uint64_t>(-4),
+    static_cast<uint64_t>(-3),
+    static_cast<uint64_t>(-2),
+    static_cast<uint64_t>(-1),
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    16,
+    32,
+    64,
+    128,
+    256,
+    512,
+    1024,
+    2048,
+    4096,
+    8192,
+    16384,
+    2147483648,
+    4294967296,
+    9223372036854775808ull,
+    18446744073709551615ull,
+    INT_MAX
+  };
   
-  
+
+
   template<unsigned bitwidth, typename type>
   static type constexpr randInt() 
   {
@@ -42,7 +82,17 @@ private:
   }
 
 
+
 public:
+  template<typename type>
+  static type constexpr randIntInteresting() 
+  {
+    int32_t whichIntToGet = randInt<32, 37, int32_t>();
+
+
+    return static_cast<type>(interestingValues.at(whichIntToGet));
+  }
+
   // Allows setting bounds
   template<unsigned bitwidth, unsigned upper = 0, typename type>
   static type constexpr randInt() 
