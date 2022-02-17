@@ -46,7 +46,7 @@ int main()
     {
       constexpr IR::X86IntrinBinOp::Op op = getOp<index.value>();	
       
-      constexpr unsigned timesToLoop = 100;	
+      constexpr unsigned timesToLoop = 10000;	
       
       //Bitsize is the number of bits in the entire vector
       constexpr unsigned op0BitSize = bitSizeOp0<op>();
@@ -89,7 +89,7 @@ int main()
       	vals = vectorRandomizer<op0Bitwidth>(vals);
 	if constexpr(op1BitSize == 32)
 	{
-          vals2 = integerRandomizer<40>();
+          vals2 = integerRandomizer();
 	}
 	else
 	{
