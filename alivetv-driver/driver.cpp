@@ -46,7 +46,7 @@ int main()
     {
       constexpr IR::X86IntrinBinOp::Op op = getOp<index.value>();	
       
-      constexpr unsigned timesToLoop = 10000;	
+      constexpr unsigned timesToLoop = 100;	
       
       //Bitsize is the number of bits in the entire vector
       constexpr unsigned op0BitSize = bitSizeOp0<op>();
@@ -95,9 +95,10 @@ int main()
 	{
           vals2 = vectorRandomizer<op1Bitwidth>(vals2);
 	}
-      	retVec = funcPointer(vals, vals2);
-      
-      	llvm::Function* tgtFunc = generateReturnFunction<retBitwidth>(retVec, "tgt");
+      	
+	retVec = funcPointer(vals, vals2);
+      	
+	llvm::Function* tgtFunc = generateReturnFunction<retBitwidth>(retVec, "tgt");
       	llvm::Function* srcFunc = generateCallFunction<op0Bitwidth, op1Bitwidth>(vals, vals2, intrinsicFunction, "src");
       	
 	const unsigned currentNumCorrect = num_correct;

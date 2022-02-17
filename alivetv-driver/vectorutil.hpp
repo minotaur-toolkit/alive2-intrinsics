@@ -43,9 +43,10 @@ void constexpr printVec(type input)
   
   constexpr unsigned vectorBitSize = bitSize<type>();
   
+  // Cast is required because int8_t is synonymous to signed char
   std::cout << "< "; 
   for(unsigned i = 0; i < vectorBitSize / bitwidth; ++i)
-    std::visit([&](auto&& arg){std::cout << arg[i] << " ";}, vals);
+    std::visit([&](auto&& arg){std::cout << static_cast<int64_t>(arg[i]) << " ";}, vals);
   std::cout << ">\n";
 }
 //Function that prints a value mismatch from two operands
