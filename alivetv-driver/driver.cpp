@@ -7,10 +7,13 @@
 #include "compareFunctions.cpp"
 #include "testLoop.hpp"
 #include "progressBar.hpp"
+#include "vectorWrapper.hpp"
 #include <chrono>
 
 int main()
 {		
+  constexpr bool enableDebug = true; // Enables logging of vector operations that produce duplicate results
+	
   //Initialize llvm module and intrinsic module
   InitializeModule();
   
@@ -43,12 +46,12 @@ int main()
     {
       constexpr IR::X86IntrinBinOp::Op op = getOp<index.value>();	
       
-      constexpr unsigned timesToLoop = 10000;	
+      constexpr unsigned timesToLoop = 100;	
       
       //Bitsize is the number of bits in the entire vector
       constexpr unsigned op0BitSize = bitSizeOp0<op>();
       constexpr unsigned op1BitSize = bitSizeOp1<op>();
-      constexpr int retBitSize = bitSizeRet<op>();
+      constexpr unsigned retBitSize = bitSizeRet<op>();
       
       //Bitwidth is the number of bits in a lane
       constexpr unsigned op0Bitwidth = bitwidthOp0<op>();
@@ -65,34 +68,37 @@ int main()
       
       //Defines the function pointer type that the function should use,
       //ie auomatically chooses return, op1, and op2 types
+      using returnType = std::conditional_t<retBitSize != 512, std::conditional_t<retBitSize == 256, __m256i, __m128i>, __m512i>;
+      using op0Type = std::conditional_t<op0BitSize != 512, std::conditional_t<op0BitSize == 256, __m256i, __m128i>, __m512i>;
+      using op1Type = std::conditional_t<op1BitSize != 512, std::conditional_t<op1BitSize == 256, __m256i, std::conditional_t<op1BitSize == 32, int32_t, __m128i>>, __m512i>;
+
       
-      typedef
-      	std::conditional_t<retBitSize != 512, std::conditional_t<retBitSize == 256, __m256i, __m128i>, __m512i>
-      	(*opFunctionType)
-      	(std::conditional_t<op0BitSize != 512, std::conditional_t<op0BitSize == 256, __m256i, __m128i>, __m512i>,
-      	std::conditional_t<op1BitSize != 512, std::conditional_t<op1BitSize == 256, __m256i, std::conditional_t<op1BitSize == 32, int32_t, __m128i>>, __m512i>);
+
+      typedef returnType (*opFunctionType)(op0Type, op1Type);
       
       auto* funcPointer = reinterpret_cast<opFunctionType>(JITCompiler->getFuncAddress("func" + std::to_string(index.value)));
-      //This jank might truly be real honest to god undefined behavior above, someone help	
       
-      //Declare the intrinsic to be used
+      // Declare the intrinsic to be used
       llvm::Function* intrinsicFunction = llvm::Intrinsic::getDeclaration(TheModule.get(), TesterX86IntrinBinOp::intrin_id.at((int) op));
      
+      // Map that counts how often certain end results are reached
+      std::unordered_map<VectorWrapper<retBitwidth, retBitSize, returnType>, int, VectorWrapperHashFn> resultMap;
 
       //Loop that tests for the equality of both functions for equal inputs	
       for(int i = 0; i != timesToLoop; ++i) {
       	vals = vectorRandomizer<op0Bitwidth>(vals);
 	if constexpr(op1BitSize == 32)
 	{
-          vals2 = integerRandomizer<40>();
+          vals2 = integerRandomizer();
 	}
 	else
 	{
-          vals2 = vectorRandomizer<op1Bitwidth, 40>(vals2);
+          vals2 = vectorRandomizer<op1Bitwidth>(vals2);
 	}
-      	retVec = funcPointer(vals, vals2);
-      
-      	llvm::Function* tgtFunc = generateReturnFunction<retBitwidth>(retVec, "tgt");
+      	
+	retVec = funcPointer(vals, vals2);
+      	
+	llvm::Function* tgtFunc = generateReturnFunction<retBitwidth>(retVec, "tgt");
       	llvm::Function* srcFunc = generateCallFunction<op0Bitwidth, op1Bitwidth>(vals, vals2, intrinsicFunction, "src");
       	
 	const unsigned currentNumCorrect = num_correct;
@@ -105,12 +111,46 @@ int main()
       	  tgtFunc->print(outs());
 	}
 
+	if constexpr (enableDebug)
+	{
+          VectorWrapper<retBitwidth, retBitSize, returnType> wrappedVec(retVec);
+	  if(resultMap.contains(wrappedVec))
+	    resultMap[wrappedVec] = resultMap[wrappedVec] + 1;
+	  else
+	    resultMap[wrappedVec] = 0;
+	}
+
       	tgtFunc->eraseFromParent();
       	srcFunc->eraseFromParent();
         ++numberOfTestsPerformed;
       }
+      if constexpr (enableDebug)
+      {
+        std::cout << "Number of repetitions for func" << index.value << ": ";
+        int numberOfRepetitions = 0;
+	VectorWrapper<retBitwidth, retBitSize, returnType> mostCommonVec;
+	int mostNumberOfAppearances = 0;
+        for(auto it : resultMap)
+	{
+          numberOfRepetitions += it.second;
+	  if(it.second > mostNumberOfAppearances)
+	  {
+            mostNumberOfAppearances = it.second;
+	    mostCommonVec = it.first;
+	  }
+	}
+	std::cout << numberOfRepetitions;
+        if(numberOfRepetitions > 0)
+	{
+	  std::cout << " | Vector: ";
+	  mostCommonVec.printVec();
+	}
+	std::cout << "\n";
+      }
+
       ++numberOfIntrinsicsTested;
-      progressBar.update(numberOfIntrinsicsTested);
+      if constexpr (!enableDebug)
+        progressBar.update(numberOfIntrinsicsTested);
     }
   });	
 
