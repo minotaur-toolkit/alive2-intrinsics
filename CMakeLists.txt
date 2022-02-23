@@ -144,14 +144,14 @@ set(UTIL_SRCS
 add_library(util STATIC ${UTIL_SRCS})
 add_dependencies(util generate_version)
 
-set(DRIVER_SRCS
-  alivetv-driver/x86Intrin.cpp
-  alivetv-driver/compareFunctions.cpp
+set(INTRINSICS_TESTER_SRCS
+  intrinsics_tester/x86Intrin.cpp
+  intrinsics_tester/compareFunctions.cpp
 )
 
-add_library(driver STATIC ${DRIVER_SRCS})
+add_library(tester STATIC ${INTRINSICS_TESTER_SRCS})
 
-set(ALIVE_LIBS ir smt tools util driver)
+set(ALIVE_LIBS ir smt tools util tester)
 
 
 if (BUILD_LLVM_UTILS OR BUILD_TV)
@@ -191,8 +191,8 @@ if (BUILD_LLVM_UTILS OR BUILD_TV)
     "tools/alive-exec.cpp"
   )
   
-  add_llvm_executable(alivetv-driver
-    "alivetv-driver/driver.cpp"
+  add_llvm_executable(intrinsics-tester
+    "intrinsics_tester/intrinsics-tester.cpp"
   )
 
 else()
@@ -240,7 +240,7 @@ if (BUILD_LLVM_UTILS OR BUILD_TV)
 #  target_link_libraries(alive2 PRIVATE ${llvm_libs})
   target_link_libraries(alive-tv PRIVATE ${ALIVE_LIBS_LLVM} ${llvm_libs})
   target_link_libraries(alive-exec PRIVATE ${ALIVE_LIBS_LLVM} ${llvm_libs})
-  target_link_libraries(alivetv-driver PRIVATE ${ALIVE_LIBS_LLVM} ${llvm_libs})
+  target_link_libraries(intrinsics-tester PRIVATE ${ALIVE_LIBS_LLVM} ${llvm_libs})
 endif()
 
 if (CYGWIN)
@@ -255,7 +255,7 @@ else()
   if (BUILD_LLVM_UTILS OR BUILD_TV)
     target_link_libraries(alive-tv PRIVATE ${Z3_LIBRARIES})
     target_link_libraries(alive-exec PRIVATE ${Z3_LIBRARIES})
-    target_link_libraries(alivetv-driver PRIVATE ${Z3_LIBRARIES})
+    target_link_libraries(intrinsics-tester PRIVATE ${Z3_LIBRARIES})
   endif()
 endif()
 
