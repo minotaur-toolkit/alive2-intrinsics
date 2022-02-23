@@ -1,5 +1,5 @@
-#include "llvm/IR/Constants.h"
 #include "llvm/ADT/APInt.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
@@ -8,10 +8,10 @@
 
 #include <llvm/IR/IntrinsicsX86.h>
 
-#include <string>
-#include <vector>
 #include <iostream>
 #include <map>
+#include <string>
+#include <vector>
 
 using namespace llvm;
 
@@ -21,16 +21,16 @@ using namespace llvm;
 // Declare easier to type IR types
 //===----------------------------------------------------------------------===//
 
-IntegerType* IRint8_t;
-IntegerType* IRint16_t;
-IntegerType* IRint32_t;
-IntegerType* IRint64_t;
+IntegerType *IRint8_t;
+IntegerType *IRint16_t;
+IntegerType *IRint32_t;
+IntegerType *IRint64_t;
 
 //===----------------------------------------------------------------------===//
 // Abstract Syntax Tree (aka Parse Tree)
 //===----------------------------------------------------------------------===//
 
-//namespace {
+// namespace {
 
 // ExprAST - Base class for all expression nodes
 class ExprAST {
@@ -40,32 +40,30 @@ public:
   virtual Value *codegen() = 0;
 };
 
-
 // IntExprAST - Expression class for integer literals
 class IntExprAST : public ExprAST {
   uint64_t val;
-  IntegerType* type;
+  IntegerType *type;
 
 public:
-  IntExprAST(uint64_t input, IntegerType* iType) : val(input), type(iType) {}
+  IntExprAST(uint64_t input, IntegerType *iType) : val(input), type(iType) {}
 
-  Value* codegen() override;
+  Value *codegen() override;
 };
 
 // VectorExprAST - Expression class for vectors of integer type
 // Value and size of vector depends on size of input vector
 class IntVectorExprAST : public ExprAST {
-  IntegerType* ElementType;
+  IntegerType *ElementType;
   std::vector<std::unique_ptr<IntExprAST>> Vals;
-  //Vals vector could have different width integers, could lead to issues
+  // Vals vector could have different width integers, could lead to issues
 
 public:
-  IntVectorExprAST(IntegerType* elementType, 
-		   std::vector<std::unique_ptr<IntExprAST>> iVals)
-	  : ElementType(elementType), 
-	  Vals(std::move(iVals)) {}
+  IntVectorExprAST(IntegerType *elementType,
+                   std::vector<std::unique_ptr<IntExprAST>> iVals)
+      : ElementType(elementType), Vals(std::move(iVals)) {}
 
-  Value* codegen() override;
+  Value *codegen() override;
 };
 
 /// VariableExprAST - Expression class for referencing a variable, like "a".
@@ -78,39 +76,37 @@ public:
   Value *codegen() override;
 };
 
-
 // CallExprAST - Expression class for function calls.
 class CallExprAST : public ExprAST {
   std::string Callee = "";
-  Function* CalleeF;
+  Function *CalleeF;
   std::vector<std::unique_ptr<ExprAST>> Args;
+
 public:
   CallExprAST(const std::string &Callee,
               std::vector<std::unique_ptr<ExprAST>> Args)
       : Callee(Callee), Args(std::move(Args)) {}
 
-  CallExprAST(Function* func, 
-	      std::vector<std::unique_ptr<ExprAST>> Args)
+  CallExprAST(Function *func, std::vector<std::unique_ptr<ExprAST>> Args)
       : CalleeF(func), Args(std::move(Args)) {}
 
-  Value* codegen() override;
+  Value *codegen() override;
 };
-
 
 // PrototypeAST - This class represents the "prototype" for a function,
 // which captures its name, and its argument types (thus implicitly the number
 // of arguments the function takes).
 class PrototypeAST {
   std::string Name;
-  Type* RetType;
-  std::vector<Type*> ArgTypes;
+  Type *RetType;
+  std::vector<Type *> ArgTypes;
 
 public:
-  PrototypeAST(const std::string& name, Type* retType, std::vector<Type*> args)
-	  : Name(name), RetType(retType), ArgTypes(std::move(args)) {}
+  PrototypeAST(const std::string &name, Type *retType, std::vector<Type *> args)
+      : Name(name), RetType(retType), ArgTypes(std::move(args)) {}
 
-  Function* codegen();
-  const std::string& getName() const { return Name; }
+  Function *codegen();
+  const std::string &getName() const { return Name; }
 };
 
 // FunctionAST - This class represents a function definition itself
@@ -118,11 +114,12 @@ class FunctionAST {
   std::unique_ptr<PrototypeAST> Proto;
   std::unique_ptr<ExprAST> Body;
 
-public:	
-  FunctionAST(std::unique_ptr<PrototypeAST> inputProto, std::unique_ptr<ExprAST> inputBody)
-	  : Proto(std::move(inputProto)), Body(std::move(inputBody)) {}
+public:
+  FunctionAST(std::unique_ptr<PrototypeAST> inputProto,
+              std::unique_ptr<ExprAST> inputBody)
+      : Proto(std::move(inputProto)), Body(std::move(inputBody)) {}
 
-  Function* codegen();
+  Function *codegen();
 };
 
 //} // end anonymous namespace
@@ -137,26 +134,25 @@ static std::unique_ptr<Module> TheModule;
 static std::unique_ptr<IRBuilder<>> Builder;
 static std::map<std::string, Value *> NamedValues;
 
-// Now declares intrisinc context and module, which will hold IR for intrinsics to be used with JIT
+// Now declares intrisinc context and module, which will hold IR for intrinsics
+// to be used with JIT
 static std::unique_ptr<LLVMContext> IntrinsicContext;
 static std::unique_ptr<Module> IntrinsicModule;
 static std::unique_ptr<IRBuilder<>> IntrinsicBuilder;
-// Then declares the alive context and module, which will hold the src and tgt functions
+// Then declares the alive context and module, which will hold the src and tgt
+// functions
 static std::unique_ptr<LLVMContext> AliveContext;
 static std::unique_ptr<Module> AliveModule;
 static std::unique_ptr<IRBuilder<>> AliveBuilder;
 
 // Constructs a 32 bit signed integer
-Value* IntExprAST::codegen() {
-  return ConstantInt::get(type, val);
-}
+Value *IntExprAST::codegen() { return ConstantInt::get(type, val); }
 
 // Constructs a constant vector out of input arguments
-Value* IntVectorExprAST::codegen() {
-  std::vector<Constant*> v;
-  for(unsigned i = 0, e = Vals.size(); i != e; ++i)
-  {
-    v.push_back(static_cast<ConstantInt*>(Vals[i]->codegen()));
+Value *IntVectorExprAST::codegen() {
+  std::vector<Constant *> v;
+  for (unsigned i = 0, e = Vals.size(); i != e; ++i) {
+    v.push_back(static_cast<ConstantInt *>(Vals[i]->codegen()));
   }
   return ConstantVector::get(v);
 }
@@ -171,12 +167,12 @@ Value *VariableExprAST::codegen() {
 }
 
 // Constructs a function call
-Value* CallExprAST::codegen() {
-  //TODO: Add a check that compares if arguments have the correct types
-	
+Value *CallExprAST::codegen() {
+  // TODO: Add a check that compares if arguments have the correct types
+
   // Look up the name in the global module table.
   // If the function is not directly provided
-  if(Callee != "") {
+  if (Callee != "") {
     CalleeF = TheModule->getFunction(Callee);
     if (!CalleeF) {
       std::cerr << "Unknown function referenced" << std::endl;
@@ -199,33 +195,34 @@ Value* CallExprAST::codegen() {
 }
 
 // Constructs the prototype for a function
-Function* PrototypeAST::codegen() {
-  
-  FunctionType* FT = FunctionType::get(RetType, ArgTypes, false);
+Function *PrototypeAST::codegen() {
 
-  Function* F = Function::Create(FT, Function::ExternalLinkage, Name, TheModule.get());
+  FunctionType *FT = FunctionType::get(RetType, ArgTypes, false);
+
+  Function *F =
+      Function::Create(FT, Function::ExternalLinkage, Name, TheModule.get());
 
   // Set names for all arguments.
   std::string inputChar = "i";
   unsigned Idx = 0;
   for (auto &Arg : F->args())
-	  Arg.setName(inputChar + std::to_string(Idx++));
+    Arg.setName(inputChar + std::to_string(Idx++));
 
   return F;
 }
 
 // Constructs the body of a function
-Function* FunctionAST::codegen() {
+Function *FunctionAST::codegen() {
   // Check for existing function from a previous "extern" declaration
-  Function* TheFunction = TheModule->getFunction(Proto->getName());  
-  
+  Function *TheFunction = TheModule->getFunction(Proto->getName());
+
   if (!TheFunction)
     TheFunction = Proto->codegen();
 
   if (!TheFunction)
     return nullptr;
-  
-  BasicBlock* BB = BasicBlock::Create(*TheContext, "entry", TheFunction);
+
+  BasicBlock *BB = BasicBlock::Create(*TheContext, "entry", TheFunction);
   Builder->SetInsertPoint(BB);
 
   // Record the function arguments in the NamedValues map.
@@ -233,7 +230,7 @@ Function* FunctionAST::codegen() {
   for (auto &Arg : TheFunction->args())
     NamedValues[std::string(Arg.getName())] = &Arg;
 
-  if (Value* RetVal = Body->codegen()) {
+  if (Value *RetVal = Body->codegen()) {
     // Finish off function by returning generated value
     Builder->CreateRet(RetVal);
 
@@ -248,8 +245,6 @@ Function* FunctionAST::codegen() {
   return nullptr;
 }
 
-
-
 //===----------------------------------------------------------------------===//
 // Initialize LLVM objects
 //===----------------------------------------------------------------------===//
@@ -257,12 +252,13 @@ Function* FunctionAST::codegen() {
 static void InitializeModule() {
   // Now opens context for intrinsic functions
   IntrinsicContext = std::make_unique<LLVMContext>();
-  IntrinsicModule = std::make_unique<Module>("Intrinsic Module", *IntrinsicContext);
-  
+  IntrinsicModule =
+      std::make_unique<Module>("Intrinsic Module", *IntrinsicContext);
+
   // Now opens a context for alive functions
   AliveContext = std::make_unique<LLVMContext>();
   AliveModule = std::make_unique<Module>("Alive Module", *AliveContext);
-  
+
   // Create builders for both modules
   IntrinsicBuilder = std::make_unique<IRBuilder<>>(*IntrinsicContext);
   AliveBuilder = std::make_unique<IRBuilder<>>(*AliveContext);
@@ -287,11 +283,11 @@ static void switchToAliveContext() {
   IntrinsicContext = std::move(TheContext);
   IntrinsicModule = std::move(TheModule);
   IntrinsicBuilder = std::move(Builder);
-	
+
   TheContext = std::move(AliveContext);
   TheModule = std::move(AliveModule);
   Builder = std::move(AliveBuilder);
-  
+
   IRint8_t = Type::getInt8Ty(*TheContext);
   IRint16_t = Type::getInt16Ty(*TheContext);
   IRint32_t = Type::getInt32Ty(*TheContext);

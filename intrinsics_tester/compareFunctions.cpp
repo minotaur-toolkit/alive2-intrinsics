@@ -2,7 +2,6 @@
 // Distributed under the MIT license that can be found in the LICENSE file.
 // Version: December 5, 2021
 
-
 #include "llvm_util/llvm2alive.h"
 #include "smt/smt.h"
 #include "tools/transform.h"
@@ -12,12 +11,12 @@
 #include "llvm/ADT/Triple.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Bitcode/BitcodeReader.h"
-#include "llvm/InitializePasses.h"
-#include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Function.h"
-#include "llvm/IR/Module.h"
+#include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassManager.h"
+#include "llvm/IR/Module.h"
 #include "llvm/IRReader/IRReader.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Signals.h"
@@ -43,26 +42,28 @@ using namespace llvm_util;
 namespace {
 
 llvm::cl::opt<string> opt_file1(llvm::cl::Positional,
-  llvm::cl::desc("first_bitcode_file"),
-  llvm::cl::Required, llvm::cl::value_desc("filename"),
-  llvm::cl::cat(alive_cmdargs));
+                                llvm::cl::desc("first_bitcode_file"),
+                                llvm::cl::Required,
+                                llvm::cl::value_desc("filename"),
+                                llvm::cl::cat(alive_cmdargs));
 
 llvm::cl::opt<string> opt_file2(llvm::cl::Positional,
-  llvm::cl::desc("[second_bitcode_file]"),
-  llvm::cl::Optional, llvm::cl::value_desc("filename"),
-  llvm::cl::cat(alive_cmdargs));
+                                llvm::cl::desc("[second_bitcode_file]"),
+                                llvm::cl::Optional,
+                                llvm::cl::value_desc("filename"),
+                                llvm::cl::cat(alive_cmdargs));
 
-llvm::cl::opt<std::string> opt_src_fn(LLVM_ARGS_PREFIX "src-fn",
-  llvm::cl::desc("Name of src function (without @)"),
-  llvm::cl::cat(alive_cmdargs), llvm::cl::init("src"));
+llvm::cl::opt<std::string>
+    opt_src_fn(LLVM_ARGS_PREFIX "src-fn",
+               llvm::cl::desc("Name of src function (without @)"),
+               llvm::cl::cat(alive_cmdargs), llvm::cl::init("src"));
 
-llvm::cl::opt<std::string> opt_tgt_fn(LLVM_ARGS_PREFIX"tgt-fn",
-  llvm::cl::desc("Name of tgt function (without @)"),
-  llvm::cl::cat(alive_cmdargs), llvm::cl::init("tgt"));
-
+llvm::cl::opt<std::string>
+    opt_tgt_fn(LLVM_ARGS_PREFIX "tgt-fn",
+               llvm::cl::desc("Name of tgt function (without @)"),
+               llvm::cl::cat(alive_cmdargs), llvm::cl::init("tgt"));
 
 llvm::ExitOnError ExitOnErr;
-
 
 optional<smt::smt_initializer> smt_init;
 
@@ -89,8 +90,7 @@ struct Results {
 
 Results verify(llvm::Function &F1, llvm::Function &F2,
                llvm::TargetLibraryInfoWrapperPass &TLI,
-               bool print_transform = false,
-               bool always_verify = false) {
+               bool print_transform = false, bool always_verify = false) {
   auto fn1 = llvm2alive(F1, TLI.getTLI(F1));
   if (!fn1)
     return Results::Error("Could not translate '" + F1.getName().str() +
@@ -142,7 +142,7 @@ Results verify(llvm::Function &F1, llvm::Function &F2,
   return r;
 }
 
-}//End namespace
+} // End namespace
 
 unsigned num_correct = 0;
 unsigned num_unsound = 0;
@@ -152,7 +152,7 @@ unsigned num_errors = 0;
 bool compareFunctions(llvm::Function &F1, llvm::Function &F2,
                       llvm::TargetLibraryInfoWrapperPass &TLI) {
   auto r = verify(F1, F2, TLI, opt_quiet, opt_always_verify);
-	
+
   if (r.status == Results::ERROR) {
     *out << "ERROR: " << r.error;
     ++num_errors;
@@ -175,7 +175,7 @@ bool compareFunctions(llvm::Function &F1, llvm::Function &F2,
     break;
 
   case Results::CORRECT:
-//  *out << "Transformation seems to be correct!\n\n";
+    //  *out << "Transformation seems to be correct!\n\n";
     ++num_correct;
     break;
 
@@ -224,8 +224,8 @@ bool compareFunctions(llvm::Function &F1, llvm::Function &F2,
       return false;
     }
   }
-  if(report_dir_created);	//Error about unused variables otherwise, TODO: fix
+  if (report_dir_created)
+    ; // Error about unused variables otherwise, TODO: fix
 
   return true;
 }
-
