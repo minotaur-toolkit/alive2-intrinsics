@@ -15,14 +15,14 @@ the project may compile on a system without it, the tool requires it.
 
 Usage
 -----
-Once the project is built, run '$ ./intrinsics-tester -h' from the build menu.
+Once the project is built, run `$ ./intrinsics-tester -h` from the build menu.
 This will provide help on using the tool, as well as the number of testable intrinsics.
 
 The only required argument is the number of tests to perform per intrinsic, which
 must be the first argument passed to the executable. 
 
 There is also support for specifying a range of intrinsics to use, and a debug mode, 
-which shows which, among other things, shows which intrinsic corresponds to what number.
+which, among other things, shows which intrinsic corresponds to which number.
 
 If any mismatch is found, the program will write the failed test in Alive2 IR, as well 
 as in LLVM IR. This will be written to standard out.
