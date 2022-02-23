@@ -18,9 +18,9 @@
 
 // For Tester Namespace
 #include "commandLineUtil.hpp"
-#include "x86Intrin.hpp"
-#include "irWrapper.hpp"
 #include "irGenerator.hpp"
+#include "irWrapper.hpp"
+#include "x86Intrin.hpp"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetOptions.h"

@@ -40,7 +40,7 @@ int main(int argc, char **argv) {
   constexpr unsigned loopCount = IR::X86IntrinBinOp::numOfX86Intrinsics;
   uint64_t numberOfTestsPerformed = 0;
   uint64_t numberOfIntrinsicsTested = 0;
-  ProgressBar progressBar(loopCount - 9); // Subtract MMX instructions
+  ProgressBar progressBar(lowerBound, upperBound); // Subtract MMX instructions
 
   auto start = std::chrono::steady_clock::now();
 

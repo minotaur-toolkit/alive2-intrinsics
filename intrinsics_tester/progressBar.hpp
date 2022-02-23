@@ -5,7 +5,24 @@
 #include <iostream>
 
 struct ProgressBar {
-  ProgressBar(int max) : maxProgress(max) { update(0); }
+  ProgressBar(int lowerBound, int upperBound) {
+    // x>=9 && x<18 are mmx instructions, which must be ignored
+    // Progress bar must have accurate progress accounting for this
+    if (lowerBound < 9 && upperBound >= 18)
+      maxProgress = (upperBound - lowerBound) - 9;
+    else if (lowerBound < 9 && upperBound < 9)
+      maxProgress = upperBound - lowerBound;
+    else if (lowerBound >= 18 && upperBound >= 18)
+      maxProgress = upperBound - lowerBound;
+    else if (lowerBound >= 9 && upperBound >= 18)
+      maxProgress = upperBound - 18;
+    else if (lowerBound < 9 && upperBound < 18)
+      maxProgress = 9 - lowerBound;
+    else // Both are in MMX range, no work to be done
+      maxProgress = 0;
+
+    update(0);
+  }
 
   void update(int currProgress) {
     progress = currProgress;
@@ -28,6 +45,6 @@ struct ProgressBar {
 
 private:
   int progress = 0;
-  const int maxProgress;
+  int maxProgress;
   const int barWidth = 70;
 };
