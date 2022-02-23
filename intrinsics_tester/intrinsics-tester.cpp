@@ -8,12 +8,16 @@
 #include "testLoop.hpp"
 #include "progressBar.hpp"
 #include "vectorWrapper.hpp"
+#include "commandLineUtil.hpp"
 #include <chrono>
 
-int main()
+int main(int argc, char** argv)
 {		
-  constexpr bool enableDebug = true; // Enables logging of vector operations that produce duplicate results
-	
+  CommandLineUtil commandLineUtil(argc, argv);
+
+  bool enableDebug = CommandLineUtil::useDebugMode;
+  unsigned lowerBound = CommandLineUtil::lowerInclusiveBound;
+  unsigned upperBound = CommandLineUtil::upperExclusiveBound;
   //Initialize llvm module and intrinsic module
   InitializeModule();
   
@@ -42,11 +46,13 @@ int main()
   {
     if constexpr(index >= 9 && index < 18) // Ignores MMX instructions
       return;
-    else // If intrinsic is supported
+    else if (index < lowerBound || index >= upperBound)
+      return;
+    else // If intrinsic is in range
     {
       constexpr IR::X86IntrinBinOp::Op op = getOp<index.value>();	
       
-      constexpr unsigned timesToLoop = 100;	
+      const unsigned timesToLoop = CommandLineUtil::numberOfRepetitions;	
       
       //Bitsize is the number of bits in the entire vector
       constexpr unsigned op0BitSize = bitSizeOp0<op>();
@@ -85,7 +91,7 @@ int main()
       std::unordered_map<VectorWrapper<retBitwidth, retBitSize, returnType>, int, VectorWrapperHashFn> resultMap;
 
       //Loop that tests for the equality of both functions for equal inputs	
-      for(int i = 0; i != timesToLoop; ++i) {
+      for(unsigned i = 0; i != timesToLoop; ++i) {
       	vals = vectorRandomizer<op0Bitwidth>(vals);
 	if constexpr(op1BitSize == 32)
 	{
@@ -111,7 +117,7 @@ int main()
       	  tgtFunc->print(outs());
 	}
 
-	if constexpr (enableDebug)
+	if (enableDebug)
 	{
           VectorWrapper<retBitwidth, retBitSize, returnType> wrappedVec(retVec);
 	  if(resultMap.contains(wrappedVec))
@@ -124,7 +130,7 @@ int main()
       	srcFunc->eraseFromParent();
         ++numberOfTestsPerformed;
       }
-      if constexpr (enableDebug)
+      if (enableDebug)
       {
         std::cout << "Number of repetitions for func" << index.value << ": ";
         int numberOfRepetitions = 0;
@@ -149,7 +155,7 @@ int main()
       }
 
       ++numberOfIntrinsicsTested;
-      if constexpr (!enableDebug)
+      if (!enableDebug)
         progressBar.update(numberOfIntrinsicsTested);
     }
   });	

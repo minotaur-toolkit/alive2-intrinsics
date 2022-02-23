@@ -29,6 +29,7 @@
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Target/TargetOptions.h"
 #include "x86Intrin.hpp"
+#include "commandLineUtil.hpp"
 
 #ifndef JIT_H
 #define JIT_H
@@ -152,7 +153,8 @@ namespace Tester
     }
     
     //Debug printing for module
-    //TheModule->print(outs(), nullptr);
+    if(CommandLineUtil::useDebugMode)
+      TheModule->print(outs(), nullptr);
     
     //Add intrinsic module to JIT
     auto JITadd = JITCompiler->addModule(llvm::orc::ThreadSafeModule(std::move(TheModule), std::move(TheContext)));
