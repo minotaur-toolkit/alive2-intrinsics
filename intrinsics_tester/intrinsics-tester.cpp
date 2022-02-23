@@ -64,9 +64,6 @@ int main(int argc, char** argv)
       constexpr unsigned op1Bitwidth = bitwidthOp1<op>();
       constexpr unsigned retBitwidth = bitwidthRet<op>();	
       
-      //vals = op0
-      //vals2 = op1
-      //retVec = ret
       //Code below initializes the vectors to 0 with the proper types for the operation
       auto vals = std::get<vectorTypeIndex<op0BitSize>()>(returnVectorType<op0BitSize>());
       auto vals2 = std::get<vectorTypeIndex<op1BitSize>()>(returnVectorType<op1BitSize>());
@@ -77,8 +74,6 @@ int main(int argc, char** argv)
       using returnType = std::conditional_t<retBitSize != 512, std::conditional_t<retBitSize == 256, __m256i, __m128i>, __m512i>;
       using op0Type = std::conditional_t<op0BitSize != 512, std::conditional_t<op0BitSize == 256, __m256i, __m128i>, __m512i>;
       using op1Type = std::conditional_t<op1BitSize != 512, std::conditional_t<op1BitSize == 256, __m256i, std::conditional_t<op1BitSize == 32, int32_t, __m128i>>, __m512i>;
-
-      
 
       typedef returnType (*opFunctionType)(op0Type, op1Type);
       

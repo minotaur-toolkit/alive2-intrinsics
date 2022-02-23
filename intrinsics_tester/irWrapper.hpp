@@ -6,6 +6,7 @@
 
 using namespace llvm;
 
+
 template<unsigned bitwidth, typename type>
 std::unique_ptr<IntVectorExprAST> generateVector(type input) {
   std::variant<int64_t*, int32_t*, int16_t*, int8_t*> vals;
@@ -40,6 +41,7 @@ std::unique_ptr<IntVectorExprAST> generateVector(type input) {
   return std::make_unique<IntVectorExprAST>(intType, std::move(valVec));
 }
 
+
 template<unsigned bitwidth, typename type>
 Function* generateReturnFunction(type input, std::string name) {
   std::unique_ptr<IntVectorExprAST> vecExpr = generateVector<bitwidth>(input);
@@ -65,6 +67,7 @@ Function* generateReturnFunction(type input, std::string name) {
   std::unique_ptr<FunctionAST> func = std::make_unique<FunctionAST>(std::move(proto), std::move(vecExpr));
   return func->codegen();
 }
+
 
 template<unsigned bitwidthOp1, unsigned bitwidthOp2, typename typeOp1, typename typeOp2>
 Function* generateCallFunction(typeOp1 input1, typeOp2 input2, Function* func, std::string name) {
@@ -94,6 +97,7 @@ Function* generateCallFunction(typeOp1 input1, typeOp2 input2, Function* func, s
   
   return returnFunction->codegen();
 }
+
 
 template<unsigned bitwidth, typename type>
 VectorType* getVectorType(type input) {
@@ -133,31 +137,6 @@ VectorType* getVectorType() {
   return VectorType::get(intType, lanes, false);
 }
 
-template<unsigned bitwidthOp1, unsigned bitwidthOp2, typename typeOp1, typename typeOp2>
-Function* generateCallFunctionWithVarInput(typeOp1 input1, typeOp2 input2, Function* func, std::string name) {
-  std::unique_ptr<VariableExprAST> vecVarOp1 = std::make_unique<VariableExprAST>("i0");
-  std::unique_ptr<VariableExprAST> vecVarOp2 = std::make_unique<VariableExprAST>("i1");
-  
-  std::vector<std::unique_ptr<ExprAST>> callVec;
-  callVec.push_back(std::move(vecVarOp1));
-  callVec.push_back(std::move(vecVarOp2));
-  
-  std::unique_ptr<CallExprAST> callExpr =
-  std::make_unique<CallExprAST>(func, std::move(callVec));
-  
-  // Get input variable types
-  VectorType* vecTypeOp1 = getVectorType<bitwidthOp1>(input1);
-  VectorType* vecTypeOp2 = getVectorType<bitwidthOp2>(input2);
-  
-  std::unique_ptr<PrototypeAST> proto = 
-  std::make_unique<PrototypeAST>(name, func->getReturnType(), std::vector<Type*>({vecTypeOp1, vecTypeOp2}));
-  
-  std::unique_ptr<FunctionAST> returnFunction =
-  std::make_unique<FunctionAST>(std::move(proto), std::move(callExpr));
-  
-  return returnFunction->codegen();
-}
-
 
 template<unsigned bitwidthOp1, unsigned bitwidthOp2, unsigned lanesOp1, unsigned lanesOp2>
 Function* generateCallFunctionWithVarInput(Function* func, std::string name) {
@@ -183,6 +162,7 @@ Function* generateCallFunctionWithVarInput(Function* func, std::string name) {
   
   return returnFunction->codegen();
 }
+
 
 Function* generateCallFunctionFromFunction(Function* func, std::string name) {
   // Extract the intrinsics arguments
