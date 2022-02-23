@@ -15,7 +15,7 @@ the project may compile on a system without it, the tool requires it.
 
 Usage
 -----
-Once the project is built, run `$ ./intrinsics-tester -h` from the build menu.
+Once the project is built, run `$ ./intrinsics-tester -h` from the build directory.
 This will provide help on using the tool, as well as the number of testable intrinsics.
 
 The only required argument is the number of tests to perform per intrinsic, which
