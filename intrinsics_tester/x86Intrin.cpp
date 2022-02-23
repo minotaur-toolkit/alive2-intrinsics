@@ -1,3 +1,7 @@
+// Copyright (c) 2021-present The Alive2 Authors.
+// Distributed under the MIT license that can be found in the LICENSE file.
+// Version: February 23, 2022
+
 #include "x86Intrin.hpp"
 
 std::array<llvm::Intrinsic::ID, IR::X86IntrinBinOp::numOfX86Intrinsics>
