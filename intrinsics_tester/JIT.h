@@ -17,10 +17,10 @@
 #include <memory>
 
 // For Tester Namespace
-#include "commandLineUtil.hpp"
-#include "irGenerator.hpp"
-#include "irWrapper.hpp"
-#include "x86Intrin.hpp"
+#include "commandLineUtil.h"
+#include "irGenerator.h"
+#include "irWrapper.h"
+#include "x86Intrin.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetOptions.h"

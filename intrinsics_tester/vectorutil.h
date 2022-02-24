@@ -8,8 +8,8 @@
 #include <stdexcept>
 #include <variant>
 
-#include "randomizer.hpp"
-#include "x86Intrin.hpp"
+#include "randomizer.h"
+#include "x86Intrin.h"
 
 #ifndef VECTORUTIL_H
 #define VECTORUTIL_H

@@ -2,7 +2,7 @@
 // Distributed under the MIT license that can be found in the LICENSE file.
 // Version: February 23, 2022
 
-#include "x86Intrin.hpp"
+#include "x86Intrin.h"
 
 std::array<llvm::Intrinsic::ID, IR::X86IntrinBinOp::numOfX86Intrinsics>
     TesterX86IntrinBinOp::intrin_id = {

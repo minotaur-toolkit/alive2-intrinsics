@@ -2,7 +2,7 @@
 // Distributed under the MIT license that can be found in the LICENSE file.
 // Version: February 23, 2022
 
-#include "vectorutil.hpp"
+#include "vectorutil.h"
 
 #ifndef VECTORWRAPPER_H
 #define VECTORWRAPPER_H

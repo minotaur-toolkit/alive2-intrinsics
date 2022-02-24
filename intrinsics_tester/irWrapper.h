@@ -2,8 +2,8 @@
 // Distributed under the MIT license that can be found in the LICENSE file.
 // Version: February 23, 2022
 
-#include "irGenerator.hpp"
-#include "vectorutil.hpp"
+#include "irGenerator.h"
+#include "vectorutil.h"
 
 #ifndef IRWRAPPER_H
 #define IRWRAPPER_H

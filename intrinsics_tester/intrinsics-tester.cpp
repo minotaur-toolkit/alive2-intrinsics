@@ -2,17 +2,17 @@
 // Distributed under the MIT license that can be found in the LICENSE file.
 // Version: February 23, 2022
 
-#include "JIT.hpp"
-#include "commandLineUtil.hpp"
+#include "JIT.h"
+#include "commandLineUtil.h"
 #include "compareFunctions.cpp"
-#include "irGenerator.hpp"
-#include "irWrapper.hpp"
-#include "progressBar.hpp"
-#include "randomizer.hpp"
-#include "testLoop.hpp"
-#include "vectorWrapper.hpp"
-#include "vectorutil.hpp"
-#include "x86Intrin.hpp"
+#include "irGenerator.h"
+#include "irWrapper.h"
+#include "progressBar.h"
+#include "randomizer.h"
+#include "testLoop.h"
+#include "vectorWrapper.h"
+#include "vectorutil.h"
+#include "x86Intrin.h"
 #include <chrono>
 
 int main(int argc, char **argv) {
