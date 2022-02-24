@@ -13,6 +13,19 @@ WARNING
 This tool requires AVX512 support to properly function. While 
 the project may compile on a system without it, the tool requires it.
 
+Building
+--------
+To build with the intrinsic semantic tester, you must add the `-DBUILD_INTRINSIC_TESTER=1` 
+argument to CMake. For example:
+
+```
+cmake -GNinja -DLLVM_DIR=~/llvm/build/lib/cmake/llvm -DBUILD_INTRINSIC_TESTER=1 -DBUILD_TV=1 -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DCMAKE_BUILD_TYPE=RelWithDebInfo ..
+```
+
+You MUST have AVX512 support on your machine to have the program run properly 
+(it will still compile, but it will fail every test). If you do not have AVX512 
+support, then use an emulator such as the Intel Software Development Emulator.
+
 Usage
 -----
 Once the project is built, run `$ ./intrinsics-tester -h` from the build directory.
