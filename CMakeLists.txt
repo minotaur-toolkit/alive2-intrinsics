@@ -144,14 +144,8 @@ set(UTIL_SRCS
 add_library(util STATIC ${UTIL_SRCS})
 add_dependencies(util generate_version)
 
-set(INTRINSICS_TESTER_SRCS
-  intrinsics_tester/x86Intrin.cpp
-  intrinsics_tester/compareFunctions.cpp
-)
 
-add_library(tester STATIC ${INTRINSICS_TESTER_SRCS})
-
-set(ALIVE_LIBS ir smt tools util tester)
+set(ALIVE_LIBS ir smt tools util)
 
 
 if (BUILD_LLVM_UTILS OR BUILD_TV)
@@ -180,8 +174,14 @@ if (BUILD_LLVM_UTILS OR BUILD_TV)
     "llvm_util/utils.cpp"
   )
 
+  set(INTRINSICS_TESTER_SRCS
+    intrinsics_tester/x86Intrin.cpp
+    intrinsics_tester/compareFunctions.cpp
+  )
+  
+  add_library(tester STATIC ${INTRINSICS_TESTER_SRCS})
   add_library(llvm_util STATIC ${LLVM_UTIL_SRCS})
-  set(ALIVE_LIBS_LLVM llvm_util ${ALIVE_LIBS})
+  set(ALIVE_LIBS_LLVM llvm_util tester ${ALIVE_LIBS})
 
   add_llvm_executable(alive-tv
     "tools/alive-tv.cpp"
