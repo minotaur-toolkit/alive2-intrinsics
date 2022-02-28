@@ -1174,15 +1174,6 @@ public:
     case llvm::Intrinsic::x86_avx2_pshuf_b:
     case llvm::Intrinsic::x86_ssse3_pshuf_b_128:
     case llvm::Intrinsic::x86_avx512_pshuf_b_512:
-    case llvm::Intrinsic::x86_mmx_padd_b:
-    case llvm::Intrinsic::x86_mmx_padd_w:
-    case llvm::Intrinsic::x86_mmx_padd_d:
-    case llvm::Intrinsic::x86_mmx_punpckhbw:
-    case llvm::Intrinsic::x86_mmx_punpckhwd:
-    case llvm::Intrinsic::x86_mmx_punpckhdq:
-    case llvm::Intrinsic::x86_mmx_punpcklbw:
-    case llvm::Intrinsic::x86_mmx_punpcklwd:
-    case llvm::Intrinsic::x86_mmx_punpckldq:
     case llvm::Intrinsic::x86_sse2_psrl_w:
     case llvm::Intrinsic::x86_sse2_psrl_d:
     case llvm::Intrinsic::x86_sse2_psrl_q:
@@ -1315,24 +1306,6 @@ public:
         op = X86IntrinBinOp::ssse3_pshuf_b_128; break;
       case llvm::Intrinsic::x86_avx512_pshuf_b_512:
         op = X86IntrinBinOp::avx512_pshuf_b_512; break;
-      case llvm::Intrinsic::x86_mmx_padd_b:
-        op = X86IntrinBinOp::mmx_padd_b; break;
-      case llvm::Intrinsic::x86_mmx_padd_w:
-        op = X86IntrinBinOp::mmx_padd_w; break;
-      case llvm::Intrinsic::x86_mmx_padd_d:
-        op = X86IntrinBinOp::mmx_padd_d; break;
-      case llvm::Intrinsic::x86_mmx_punpckhbw:
-        op = X86IntrinBinOp::mmx_punpckhbw; break;
-      case llvm::Intrinsic::x86_mmx_punpckhwd:
-        op = X86IntrinBinOp::mmx_punpckhwd; break;
-      case llvm::Intrinsic::x86_mmx_punpckhdq:
-        op = X86IntrinBinOp::mmx_punpckhdq; break;
-      case llvm::Intrinsic::x86_mmx_punpcklbw:
-        op = X86IntrinBinOp::mmx_punpcklbw; break;
-      case llvm::Intrinsic::x86_mmx_punpcklwd:
-        op = X86IntrinBinOp::mmx_punpcklwd; break;
-      case llvm::Intrinsic::x86_mmx_punpckldq:
-        op = X86IntrinBinOp::mmx_punpckldq; break;
       case llvm::Intrinsic::x86_sse2_psrl_w:
         op = X86IntrinBinOp::sse2_psrl_w; break;
       case llvm::Intrinsic::x86_sse2_psrl_d:
