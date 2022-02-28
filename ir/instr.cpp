@@ -4776,15 +4776,6 @@ string X86IntrinBinOp::getOpName(Op op) {
   case avx2_pshuf_b:          return "x86.avx2.pshuf.b";
   case ssse3_pshuf_b_128:     return "x86.ssse3.pshuf.b.128";
   case avx512_pshuf_b_512:    return "x86.avx512.pshuf.b.512";
-  case mmx_padd_b:            return "x86.mmx.padd.b";
-  case mmx_padd_w:            return "x86.mmx.padd.w";
-  case mmx_padd_d:            return "x86.mmx.padd.d";
-  case mmx_punpckhbw:         return "x86.mmx.punpckhbw";
-  case mmx_punpckhwd:         return "x86.mmx.punpckhwd";
-  case mmx_punpckhdq:         return "x86.mmx.punpckhdq";
-  case mmx_punpcklbw:         return "x86.mmx.punpcklbw";
-  case mmx_punpcklwd:         return "x86.mmx.punpcklwd";
-  case mmx_punpckldq:         return "x86.mmx.punpckldq";
   case sse2_psrl_w:           return "x86.sse2.psrl.w";
   case sse2_psrl_d:           return "x86.sse2.psrl.d";
   case sse2_psrl_q:           return "x86.sse2.psrl.q";
@@ -5018,9 +5009,6 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
   case avx2_pavg_b:
   case avx512_pavg_w_512:
   case avx512_pavg_b_512:
-  case mmx_padd_b:
-  case mmx_padd_w:
-  case mmx_padd_d:
   case ssse3_psign_b_128:
   case ssse3_psign_w_128:
   case ssse3_psign_d_128:
@@ -5073,13 +5061,6 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
       fn = [&](auto a, auto b) -> expr {
         unsigned bw = a.bits();
         return (a.zext(1) + b.zext(1) + expr::mkUInt(1, bw + 1)).lshr(expr::mkUInt(1, bw + 1)).trunc(bw);
-      };
-      break;
-    case mmx_padd_b:
-    case mmx_padd_w:
-    case mmx_padd_d:
-      fn = [&](auto a, auto b) -> expr {
-        return a + b;
       };
       break;
     case ssse3_psign_b_128:
@@ -5190,6 +5171,7 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
     }
     return rty->aggregateVals(vals);
   }
+  /*
   case mmx_punpckhbw:
   case mmx_punpckhwd:
   case mmx_punpckhdq:
@@ -5218,7 +5200,7 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
     }
 
     return rty->aggregateVals(vals);
-  }
+  }*/
   // horizontal
   case ssse3_phadd_w_128:
   case ssse3_phadd_d_128:
