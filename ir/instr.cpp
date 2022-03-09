@@ -4688,7 +4688,7 @@ void X86IntrinBinOp::rauw(const Value &what, Value &with) {
 
 string X86IntrinBinOp::getOpName(Op op) {
   switch (op) {
-#define PROCESS(NAME,A,B,C,D,E,F) case NAME: return "NAME";
+#define PROCESS(NAME,A,B,C,D,E,F) case NAME: return #NAME;
 #include "intrinsics.h"
 #undef PROCESS
   }
