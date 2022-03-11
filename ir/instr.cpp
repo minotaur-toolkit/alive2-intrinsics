@@ -4637,7 +4637,7 @@ void FakeShuffle::rauw(const Value &what, Value &with) {
 }
 
 void FakeShuffle::print(ostream &os) const {
-  os << getName() << " = fakesv " << *v1 << ", " << *v2;
+  os << getName() << " = fakesv " << *v1 << ", " << *v2 << ", " << *mask;
 }
 
 StateValue FakeShuffle::toSMT(State &s) const {
@@ -4647,16 +4647,16 @@ StateValue FakeShuffle::toSMT(State &s) const {
   vector<StateValue> vals;
 
   for (unsigned i = 0, e = mty->numElementsConst(); i != e; ++i) {
-    auto mi = mty->extract(s[*mask], i);
-    auto idx = mi.value.urem(sz);
+    auto [m_v, m_p] = mty->extract(s[*mask], i);
+    expr bound = expr::mkUInt(sz, m_v);
+    expr idx = m_v.urem(bound);
     auto [v1v, v1p] = vty->extract(s[*v1], idx);
     auto [v2v, v2p] = vty->extract(s[*v2], idx);
-    expr v  = expr::mkIf(mi.value.ult(sz), v1v, v2v);
-    expr np = expr::mkIf(mi.value.ult(sz), v1p, v2p);
+    expr v  = expr::mkIf(m_v.ult(bound), v1v, v2v);
+    expr np = expr::mkIf(m_v.ult(bound), v1p, v2p);
+    expr inbounds = m_v.ult(expr::mkUInt(vty->numElementsConst() * 2, m_v));
 
-    expr inbounds = mi.value.ult(vty->numElementsConst() * 2);
-
-    vals.emplace_back(move(v), inbounds & np);
+    vals.emplace_back(move(v), inbounds && np);
   }
 
   return getType().getAsAggregateType()->aggregateVals(vals);
@@ -4672,8 +4672,7 @@ expr FakeShuffle::getTypeConstraints(const Function &f) const {
 }
 
 unique_ptr<Instr> FakeShuffle::dup(const string &suffix) const {
-  return make_unique<FakeShuffle>(getType(), getName() + suffix,
-                                            *v1, *v2, *mask);
+  return make_unique<FakeShuffle>(getType(), getName()+suffix, *v1, *v2, *mask);
 }
 
 
