@@ -5191,25 +5191,35 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
   case x86_avx512_packsswb_512:
   case x86_sse2_packuswb_128:
   case x86_avx2_packuswb:
-  case x86_avx512_packuswb_512: {
+  case x86_avx512_packuswb_512:
+  case x86_sse2_packssdw_128:
+  case x86_avx2_packssdw:
+  case x86_avx512_packssdw_512:
+  case x86_sse41_packusdw:
+  case x86_avx2_packusdw:
+  case x86_avx512_packusdw_512: {
     vector<StateValue> vals;
     function<expr(const expr&)> fn;
-    if (op == x86_sse2_packsswb_128 || op == x86_avx2_packsswb || op == x86_avx512_packsswb_512) {
+    if (op == x86_sse2_packsswb_128 || op == x86_avx2_packsswb ||
+        op == x86_avx512_packsswb_512 || op == x86_sse2_packssdw_128 ||
+        op == x86_avx2_packssdw || op == x86_avx512_packssdw_512) {
       fn = [&](auto a) -> expr {
-        auto min = expr::IntSMin(8);
-        auto max = expr::IntSMax(8);
-        return expr::mkIf(a.sle(min.sext(8)), min,
-                                expr::mkIf(a.sge(max.sext(8)), max,
-                                a.trunc(8)));
+        unsigned bw = a.bits();
+        auto min = expr::IntSMin(bw);
+        auto max = expr::IntSMax(bw);
+        return expr::mkIf(a.sle(min.sext(bw)), min,
+                                expr::mkIf(a.sge(max.sext(bw)), max,
+                                a.trunc(bw)));
       };
     } else {
       fn = [&](auto a) -> expr {
-        auto max = expr::IntUMax(8);
-        return expr::mkIf(a.uge(max.zext(8)), max, a.trunc(8));
+        unsigned bw = a.bits();
+        auto max = expr::IntUMax(bw);
+        return expr::mkIf(a.uge(max.zext(bw)), max, a.trunc(bw));
       };
     }
 
-    unsigned groupsize = 8;
+    unsigned groupsize = 128/shape_op1[op].second;
     unsigned laneCount = shape_op1[op].first;
     for (unsigned j = 0; j != laneCount / groupsize; j ++) {
       for (unsigned i = 0; i != groupsize; i ++) {
