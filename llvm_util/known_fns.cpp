@@ -38,9 +38,9 @@ known_call(llvm::CallInst &i, const llvm::TargetLibraryInfo &TLI,
     RETURN_EXACT();
 
   auto fn = i.getCalledFunction();
-  if (fn && fn->hasName() && fn->getName().startswith("__sv_")) {
+  if (fn && fn->hasName() && fn->getName().startswith("__svsv")) {
     RETURN_VAL(
-      make_unique<ReservedShuffleVector>(*ty, value_name(i), *args[0], *args[1], *args[2]));
+      make_unique<FakeShuffle>(*ty, value_name(i), *args[0], *args[1], *args[2]));
   }
 
   // TODO: add support for checking mismatch of C vs C++ alloc fns
