@@ -1080,7 +1080,7 @@ public:
 
 class X86IntrinBinOp final : public Instr {
 public:
-  static constexpr unsigned numOfX86Intrinsics = 126;
+  static constexpr unsigned numOfX86Intrinsics = 132;
   enum Op {
 #define PROCESS(NAME,A,B,C,D,E,F) NAME,
 #include "intrinsics.h"
