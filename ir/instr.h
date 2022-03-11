@@ -1118,10 +1118,10 @@ public:
 };
 
 
-class ReservedShuffleVector final : public Instr {
+class FakeShuffle final : public Instr {
   Value *v1, *v2, *mask;
 public:
-  ReservedShuffleVector(Type &type, std::string &&name,
+  FakeShuffle(Type &type, std::string &&name,
                         Value &v1, Value &v2,Value &mask)
     : Instr(type, std::move(name)), v1(&v1), v2(&v2), mask(&mask) {}
   std::vector<Value*> operands() const override;
