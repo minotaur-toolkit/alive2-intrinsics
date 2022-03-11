@@ -5265,6 +5265,43 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
     }
     return rty->aggregateVals(vals);
   }
+  case x86_sse2_packsswb_128:
+  case x86_avx2_packsswb:
+  case x86_avx512_packsswb_512:
+  case x86_sse2_packuswb_128:
+  case x86_avx2_packuswb:
+  case x86_avx512_packuswb_512: {
+    vector<StateValue> vals;
+    function<expr(const expr&)> fn;
+    if (op == x86_sse2_packsswb_128 || op == x86_avx2_packsswb || op == x86_avx512_packsswb_512) {
+      fn = [&](auto a) -> expr {
+        auto min = expr::IntSMin(8);
+        auto max = expr::IntSMax(8);
+        return expr::mkIf(a.sle(min.sext(8)), min,
+                                expr::mkIf(a.sge(max.sext(8)), max,
+                                a.trunc(8)));
+      };
+    } else {
+      fn = [&](auto a) -> expr {
+        auto max = expr::IntUMax(8);
+        return expr::mkIf(a.uge(max.zext(8)), max, a.trunc(8));
+      };
+    }
+
+    unsigned groupsize = 8;
+    unsigned laneCount = shape_op1[op].first;
+    for (unsigned j = 0; j != laneCount / groupsize; j ++) {
+      for (unsigned i = 0; i != groupsize; i ++) {
+        auto [a1, p1] = aty->extract(av, j * 8 + i);
+        vals.emplace_back(fn(move(a1)), move(p1));
+      }
+      for (unsigned i = 0; i != groupsize; i ++) {
+        auto [b1, p1] = aty->extract(bv, j * 8 + i);
+        vals.emplace_back(fn(move(b1)), move(p1));
+      }
+    }
+    return rty->aggregateVals(vals);
+  }
   // TODO: add semantic for other intrinsics
   default:
     UNREACHABLE();
