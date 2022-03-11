@@ -4772,21 +4772,21 @@ unique_ptr<Instr> ShuffleVector::dup(Function &f, const string &suffix) const {
 }
 
 
-vector<Value*> ReservedShuffleVector::operands() const {
+vector<Value*> FakeShuffle::operands() const {
   return { v1, v2, mask };
 }
 
-void ReservedShuffleVector::rauw(const Value &what, Value &with) {
+void FakeShuffle::rauw(const Value &what, Value &with) {
   RAUW(v1);
   RAUW(v2);
   RAUW(mask);
 }
 
-void ReservedShuffleVector::print(ostream &os) const {
-  os << getName() << " = shufflevector " << *v1 << ", " << *v2;
+void FakeShuffle::print(ostream &os) const {
+  os << getName() << " = fakesv " << *v1 << ", " << *v2;
 }
 
-StateValue ReservedShuffleVector::toSMT(State &s) const {
+StateValue FakeShuffle::toSMT(State &s) const {
   auto vty = static_cast<const VectorType*>(v1->getType().getAsAggregateType());
   auto mty = mask->getType().getAsAggregateType();
   auto sz = vty->numElementsConst();
@@ -4808,7 +4808,7 @@ StateValue ReservedShuffleVector::toSMT(State &s) const {
   return getType().getAsAggregateType()->aggregateVals(vals);
 }
 
-expr ReservedShuffleVector::getTypeConstraints(const Function &f) const {
+expr FakeShuffle::getTypeConstraints(const Function &f) const {
   return Value::getTypeConstraints() &&
          getType().enforceVectorTypeSameChildTy(v1->getType()) &&
          getType().getAsAggregateType()->numElements() == mask->getType().getAsAggregateType()->numElements() &&
@@ -4817,8 +4817,8 @@ expr ReservedShuffleVector::getTypeConstraints(const Function &f) const {
          mask->getType().enforceVectorType();
 }
 
-unique_ptr<Instr> ReservedShuffleVector::dup(const string &suffix) const {
-  return make_unique<ReservedShuffleVector>(getType(), getName() + suffix,
+unique_ptr<Instr> FakeShuffle::dup(const string &suffix) const {
+  return make_unique<FakeShuffle>(getType(), getName() + suffix,
                                             *v1, *v2, *mask);
 }
 
@@ -5350,16 +5350,16 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
         op == x86_avx512_packsswb_512 || op == x86_sse2_packssdw_128 ||
         op == x86_avx2_packssdw || op == x86_avx512_packssdw_512) {
       fn = [&](auto a) -> expr {
-        unsigned bw = a.bits();
+        unsigned bw = a.bits() / 2;
         auto min = expr::IntSMin(bw);
         auto max = expr::IntSMax(bw);
         return expr::mkIf(a.sle(min.sext(bw)), min,
-                                expr::mkIf(a.sge(max.sext(bw)), max,
-                                a.trunc(bw)));
+                          expr::mkIf(a.sge(max.sext(bw)), max,
+                                     a.trunc(bw)));
       };
     } else {
       fn = [&](auto a) -> expr {
-        unsigned bw = a.bits();
+        unsigned bw = a.bits() / 2;
         auto max = expr::IntUMax(bw);
         return expr::mkIf(a.uge(max.zext(bw)), max, a.trunc(bw));
       };
@@ -5369,11 +5369,11 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
     unsigned laneCount = shape_op1[op].first;
     for (unsigned j = 0; j != laneCount / groupsize; j ++) {
       for (unsigned i = 0; i != groupsize; i ++) {
-        auto [a1, p1] = aty->extract(av, j * 8 + i);
+        auto [a1, p1] = aty->extract(av, j * groupsize + i);
         vals.emplace_back(fn(move(a1)), move(p1));
       }
       for (unsigned i = 0; i != groupsize; i ++) {
-        auto [b1, p1] = aty->extract(bv, j * 8 + i);
+        auto [b1, p1] = aty->extract(bv, j * groupsize + i);
         vals.emplace_back(fn(move(b1)), move(p1));
       }
     }
