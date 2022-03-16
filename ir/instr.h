@@ -1181,7 +1181,7 @@ class FakeShuffle final : public Instr {
   Value *v1, *v2, *mask;
 public:
   FakeShuffle(Type &type, std::string &&name,
-                        Value &v1, Value &v2,Value &mask)
+              Value &v1, Value &v2, Value &mask)
     : Instr(type, std::move(name)), v1(&v1), v2(&v2), mask(&mask) {}
   std::vector<Value*> operands() const override;
   void rauw(const Value &what, Value &with) override;
@@ -1194,7 +1194,7 @@ public:
 
 class X86IntrinBinOp final : public Instr {
 public:
-  static constexpr unsigned numOfX86Intrinsics = 132;
+  static constexpr unsigned numOfX86Intrinsics = 135;
   enum Op {
 #define PROCESS(NAME,A,B,C,D,E,F) NAME,
 #include "intrinsics.h"
