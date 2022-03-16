@@ -1169,7 +1169,7 @@ public:
     default:
       break;
     }
-    return visitCallInst(i, true);
+    return error(i); //visitCallInst(i, true);
   }
 
   RetTy visitExtractElementInst(llvm::ExtractElementInst &i) {
