@@ -4867,6 +4867,27 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
     }
     return rty->aggregateVals(vals);
   }
+  case x86_sse2_psad_bw:
+  case x86_avx2_psad_bw:
+  case x86_avx512_psad_bw_512: {
+    unsigned ngroup = shape_ret[op].first;
+    vector<StateValue> vals;
+    for (unsigned j = 0 ; j < ngroup; ++j) {
+      expr np = true;
+      expr v;
+      for (unsigned i = 0; i < 8; ++i) {
+        auto [a, ap] = aty->extract(av, 8 * j + i);
+        auto [b, bp] = bty->extract(bv, 8 * j + i);
+        np = np && ap && bp;
+        if (i == 0)
+          v = (a - b).abs().zext(8);
+        else
+          v = v + (a - b).abs().zext(8);
+      }
+      vals.emplace_back(v.zext(48), move(np));
+    }
+    return rty->aggregateVals(vals);
+  }
   // TODO: add semantic for other intrinsics
   default:
     UNREACHABLE();
