@@ -1,6 +1,8 @@
+#pragma once
+
 // Copyright (c) 2021-present The Alive2 Authors.
 // Distributed under the MIT license that can be found in the LICENSE file.
-// Version: February 23, 2022
+// Version: April 7, 2022
 
 #include <array>
 #include <immintrin.h>
@@ -10,9 +12,6 @@
 
 #include "randomizer.h"
 #include "x86Intrin.h"
-
-#ifndef VECTORUTIL_H
-#define VECTORUTIL_H
 
 template <typename type> constexpr unsigned bitSize() {
   if constexpr (std::is_same_v<type, __m512i>)
@@ -366,4 +365,3 @@ int32_t constexpr integerRandomizer() {
   else
     return Randomizer::randIntInteresting<int32_t>();
 }
-#endif

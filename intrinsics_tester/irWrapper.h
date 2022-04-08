@@ -1,12 +1,11 @@
+#pragma once
+
 // Copyright (c) 2021-present The Alive2 Authors.
 // Distributed under the MIT license that can be found in the LICENSE file.
-// Version: February 23, 2022
+// Version: April 7, 2022
 
 #include "irGenerator.h"
 #include "vectorutil.h"
-
-#ifndef IRWRAPPER_H
-#define IRWRAPPER_H
 
 using namespace llvm;
 
@@ -208,4 +207,3 @@ Function *generateCallFunctionFromFunction(Function *func, std::string name) {
 
   return func;
 }
-#endif

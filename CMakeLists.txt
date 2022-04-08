@@ -148,7 +148,6 @@ set(UTIL_SRCS
 add_library(util STATIC ${UTIL_SRCS})
 add_dependencies(util generate_version)
 
-
 set(ALIVE_LIBS ir smt tools util)
 
 
@@ -242,7 +241,7 @@ add_executable(alive-jobserver
 #add_library(alive2 SHARED ${IR_SRCS} ${SMT_SRCS} ${TOOLS_SRCS} ${UTIL_SRCS} ${LLVM_UTIL_SRCS})
 
 if (BUILD_LLVM_UTILS OR BUILD_TV)
-	llvm_map_components_to_libnames(llvm_libs ExecutionEngine orcjit support core irreader analysis passes transformutils native target jitlink)
+  llvm_map_components_to_libnames(llvm_libs ExecutionEngine orcjit support core irreader analysis passes transformutils native target jitlink)
 #  target_link_libraries(alive2 PRIVATE ${llvm_libs})
   target_link_libraries(alive-tv PRIVATE ${ALIVE_LIBS_LLVM} ${llvm_libs})
   target_link_libraries(alive-exec PRIVATE ${ALIVE_LIBS_LLVM} ${llvm_libs})

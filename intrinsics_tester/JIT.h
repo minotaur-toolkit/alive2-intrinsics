@@ -1,6 +1,8 @@
+#pragma once
+
 // Copyright (c) 2021-present The Alive2 Authors.
 // Distributed under the MIT license that can be found in the LICENSE file.
-// Version: February 23, 2022
+// Version: April 7, 2022
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ExecutionEngine/JITSymbol.h"
@@ -24,9 +26,6 @@
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetOptions.h"
-
-#ifndef JIT_H
-#define JIT_H
 
 namespace llvm {
 namespace orc {
@@ -161,5 +160,3 @@ std::unique_ptr<llvm::orc::JIT> generateIntrinsicJIT() {
   return JITCompiler;
 }
 } // end namespace Tester
-
-#endif

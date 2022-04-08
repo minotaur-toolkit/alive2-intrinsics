@@ -1,14 +1,13 @@
+#pragma once
+
 // Copyright (c) 2021-present The Alive2 Authors.
 // Distributed under the MIT license that can be found in the LICENSE file.
-// Version: February 23, 2022
+// Version: April 7, 2022
 
 #include <climits>
 #include <random>
 #include <stdexcept>
 #include <variant>
-
-#ifndef RANDOMIZER_H
-#define RANDOMIZER_H
 
 struct Randomizer {
 private:
@@ -122,5 +121,3 @@ std::uniform_int_distribution<int16_t> Randomizer::dist16i =
     std::uniform_int_distribution<int16_t>(-32768, 32767);
 std::uniform_int_distribution<int8_t> Randomizer::dist8i =
     std::uniform_int_distribution<int8_t>(-128, 127);
-
-#endif

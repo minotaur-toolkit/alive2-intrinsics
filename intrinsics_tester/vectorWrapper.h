@@ -1,11 +1,10 @@
+#pragma once
+
 // Copyright (c) 2021-present The Alive2 Authors.
 // Distributed under the MIT license that can be found in the LICENSE file.
-// Version: February 23, 2022
+// Version: April 7, 2022
 
 #include "vectorutil.h"
-
-#ifndef VECTORWRAPPER_H
-#define VECTORWRAPPER_H
 
 template <unsigned ibitWidth, unsigned ibitSize, typename T>
 struct VectorWrapper {
@@ -61,5 +60,3 @@ struct VectorWrapperHashFn {
     return static_cast<std::size_t>(retVal);
   }
 };
-
-#endif

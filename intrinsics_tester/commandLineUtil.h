@@ -1,6 +1,8 @@
+#pragma once
+
 // Copyright (c) 2021-present The Alive2 Authors.
 // Distributed under the MIT license that can be found in the LICENSE file.
-// Version: February 23, 2022
+// Version: April 7, 2022
 
 #include <algorithm>
 #include <cstdlib>
@@ -8,9 +10,6 @@
 #include <ir/instr.h>
 #include <string>
 #include <vector>
-
-#ifndef COMMANDLINEUTIL_H
-#define COMMANDLINEUTIL_H
 
 struct CommandLineUtil {
   static bool useDebugMode;
@@ -150,5 +149,3 @@ unsigned CommandLineUtil::lowerInclusiveBound = 0;
 unsigned CommandLineUtil::upperExclusiveBound =
     IR::X86IntrinBinOp::numOfX86Intrinsics;
 unsigned CommandLineUtil::numberOfRepetitions = 100;
-
-#endif

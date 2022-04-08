@@ -1,6 +1,8 @@
+#pragma once
+
 // Copyright (c) 2021-present The Alive2 Authors.
 // Distributed under the MIT license that can be found in the LICENSE file.
-// Version: February 23, 2022
+// Version: April 7, 2022
 
 #include "llvm/ADT/APInt.h"
 #include "llvm/IR/Constants.h"
@@ -19,8 +21,6 @@
 
 using namespace llvm;
 
-#ifndef IRGENERATOR_H
-#define IRGENERATOR_H
 //===----------------------------------------------------------------------===//
 // Declare easier to type IR types
 //===----------------------------------------------------------------------===//
@@ -299,4 +299,3 @@ static void switchToAliveContext() {
 
   NamedValues.clear();
 }
-#endif

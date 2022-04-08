@@ -1,6 +1,8 @@
+#pragma once
+
 // Copyright (c) 2021-present The Alive2 Authors.
 // Distributed under the MIT license that can be found in the LICENSE file.
-// Version: February 23, 2022
+// Version: April 7, 2022
 
 #include <array>
 #include <immintrin.h>
@@ -10,9 +12,6 @@
 #include "llvm/IR/IntrinsicsX86.h"
 
 #include "ir/instr.h"
-
-#ifndef TESTERX86INTRINBINOP_H
-#define TESTERX86INTRINBINOP_H
 
 using binOp = IR::X86IntrinBinOp::Op;
 
@@ -100,5 +99,3 @@ template <binOp op> constexpr int bitwidthRet() {
 template <unsigned long int index> constexpr binOp getOp() {
   return static_cast<IR::X86IntrinBinOp::Op>(index);
 }
-
-#endif
