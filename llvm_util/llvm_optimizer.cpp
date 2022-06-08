@@ -23,7 +23,7 @@ string optimize_module(llvm::Module *M, llvm::StringRef optArgs) {
   PB.registerFunctionAnalyses(FAM);
   PB.registerLoopAnalyses(LAM);
   PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
-
+/*
   if (optArgs == "O3") {
     MPM = PB.buildPerModuleDefaultPipeline(OptimizationLevel::O3);
   } else if (optArgs == "O2") {
@@ -40,7 +40,7 @@ string optimize_module(llvm::Module *M, llvm::StringRef optArgs) {
     if (auto Err = PB.parsePassPipeline(MPM, optArgs))
       return toString(std::move(Err));
   }
-  MPM.run(*M, MAM);
+  MPM.run(*M, MAM);*/
   return {};
 }
 

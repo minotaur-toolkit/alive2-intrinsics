@@ -345,7 +345,7 @@ public:
         if (i.getArgOperand(argidx)->getType()->isAggregateType())
           // TODO: noundef aggregate should be supported; it can have undef
           // padding
-          return errorAttr(i.getAttributeAtIndex(argidx, llvm::Attribute::NoUndef));
+          return error(i);
       }
 
       if (i.paramHasAttr(argidx, llvm::Attribute::Returned)) {
@@ -1043,6 +1043,7 @@ public:
                                                     op, parse_rounding(i),
                                                     parse_exceptions(i)));
     }
+    /*
     case llvm::Intrinsic::is_fpclass:
     {
       PARSE_BINOP();
@@ -1052,7 +1053,7 @@ public:
       default: UNREACHABLE();
       }
       RETURN_IDENTIFIER(make_unique<TestOp>(*ty, value_name(i), *a, *b, op));
-    }
+    }*/
     case llvm::Intrinsic::lifetime_start:
     case llvm::Intrinsic::lifetime_end:
     {
@@ -1275,7 +1276,7 @@ public:
         attrs.blockSize = max(attrs.blockSize, asz.getKnownMinSize());
 
         attrs.set(ParamAttrs::Align);
-        attrs.align = max(attrs.align, DL().getABITypeAlignment(ty));
+        attrs.align = attrs.align >  DL().getABITypeAlignment(ty)? attrs.align :DL().getABITypeAlignment(ty);
         continue;
       }
 

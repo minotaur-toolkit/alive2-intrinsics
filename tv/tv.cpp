@@ -586,11 +586,12 @@ llvmGetPassPluginInfo() {
       // such as O2, O3 are used by either opt or clang.
       // ClangTVFinalizePass internally checks whether we're running clang tv
       // and finalizes resources then.
+      /*
       PB.registerOptimizerLastEPCallback(
           [](llvm::ModulePassManager &MPM, llvm::OptimizationLevel) {
             MPM.addPass(ClangTVFinalizePass());
           });
-
+*/
       if (batch_opts) {
         // For batched clang tv, manually run TVPass before each pass
         PB.getPassInstrumentationCallbacks()

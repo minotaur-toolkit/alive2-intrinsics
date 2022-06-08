@@ -44,6 +44,7 @@ known_call(llvm::CallInst &i, const llvm::TargetLibraryInfo &TLI,
   }
 
   // TODO: add support for checking mismatch of C vs C++ alloc fns
+  /*
   if (llvm::isMallocOrCallocLikeFn(&i, &TLI)) {
     bool isNonNull = i.hasRetAttr(llvm::Attribute::NonNull);
     //TODO: also null for C++'s new throwing operator
@@ -69,7 +70,7 @@ known_call(llvm::CallInst &i, const llvm::TargetLibraryInfo &TLI,
     // malloc or new
     RETURN_VAL(
       make_unique<Malloc>(*ty, value_name(i), *args[0], isNonNull, align(i)));
-  }
+  }*/
   if (llvm::isReallocLikeFn(&i, &TLI)) {
     bool isNonNull = i.hasRetAttr(llvm::Attribute::NonNull);
     RETURN_VAL(make_unique<Malloc>(*ty, value_name(i), *args[0], *args[1],
