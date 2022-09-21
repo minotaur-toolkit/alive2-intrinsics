@@ -13,75 +13,8 @@
 using namespace IR;
 using namespace std;
 
-#define RETURN_VAL(op) \
-  return { op, std::move(attrs), std::move(param_attrs), false }
-#define RETURN_EXACT() \
-  return { nullptr, std::move(attrs), std::move(param_attrs), false }
-#define RETURN_APPROX() \
-  return { nullptr, std::move(attrs), std::move(param_attrs), true }
-
-static unsigned align(llvm::CallInst &i) {
-  auto a = i.getRetAlign();
-  return a.hasValue() ? a.getValue().value() : 0;
-}
-
-namespace llvm_util {
-
-tuple<unique_ptr<Instr>, FnAttrs, vector<ParamAttrs>, bool>
-known_call(llvm::CallInst &i, const llvm::TargetLibraryInfo &TLI,
-           BasicBlock &BB, const vector<Value*> &args) {
-  FnAttrs attrs;
-  vector<ParamAttrs> param_attrs;
-
-  auto ty = llvm_type2alive(i.getType());
-  if (!ty)
-    RETURN_EXACT();
-
-  auto fn = i.getCalledFunction();
-  if (fn && fn->hasName() && fn->getName().startswith("__fksv")) {
-    RETURN_VAL(
-      make_unique<FakeShuffle>(*ty, value_name(i), *args[0], *args[1], *args[2]));
-  }
-
-  // TODO: add support for checking mismatch of C vs C++ alloc fns
-  if (llvm::isMallocOrCallocLikeFn(&i, &TLI)) {
-    bool isNonNull = i.hasRetAttr(llvm::Attribute::NonNull);
-    //TODO: also null for C++'s new throwing operator
-
-    // aligned malloc
-    if (auto *algn = llvm::getAllocAlignment(&i, &TLI)) {
-      if (auto algnint = dyn_cast<llvm::ConstantInt>(algn)) {
-        RETURN_VAL(
-          make_unique<Malloc>(*ty, value_name(i), *args[1], isNonNull,
-                              algnint->getZExtValue()));
-      } else {
-        // TODO: add support for non-const alignments
-        RETURN_APPROX();
-      }
-    }
-
-    // calloc
-    if (auto *init = llvm::getInitialValueOfAllocation(&i, &TLI, i.getType());
-        init && init->isNullValue())
-      RETURN_VAL(
-        make_unique<Calloc>(*ty, value_name(i), *args[0], *args[1], align(i)));
-
-    // malloc or new
-    RETURN_VAL(
-      make_unique<Malloc>(*ty, value_name(i), *args[0], isNonNull, align(i)));
-  }
-  if (llvm::isReallocLikeFn(&i, &TLI)) {
-    bool isNonNull = i.hasRetAttr(llvm::Attribute::NonNull);
-    RETURN_VAL(make_unique<Malloc>(*ty, value_name(i), *args[0], *args[1],
-                                   isNonNull, align(i)));
-  }
-  if (llvm::isFreeCall(&i, &TLI)) {
-    if (i.hasFnAttr(llvm::Attribute::NoFree)) {
-      auto zero = make_intconst(0, 1);
-      RETURN_VAL(make_unique<Assume>(*zero, Assume::AndNonPoison));
-    }
-    RETURN_VAL(make_unique<Free>(*args[0]));
-  }
+#define RETURN_EXACT()  return false
+#define RETURN_APPROX() return true
 
 static bool implict_attrs_(llvm::LibFunc libfn, FnAttrs &attrs,
                            vector<ParamAttrs> &param_attrs, bool is_void,
