@@ -4750,7 +4750,7 @@ expr FakeShuffle::getTypeConstraints(const Function &f) const {
          mask->getType().enforceVectorType();
 }
 
-unique_ptr<Instr> FakeShuffle::dup(const string &suffix) const {
+unique_ptr<Instr> FakeShuffle::dup(Function &f, const string &suffix) const {
   return make_unique<FakeShuffle>(getType(), getName()+suffix, *v1, *v2, *mask);
 }
 
@@ -5357,7 +5357,7 @@ expr X86IntrinBinOp::getTypeConstraints(const Function &f) const {
       : getType().enforceIntType(shape_ret[op].second));
 }
 
-unique_ptr<Instr> X86IntrinBinOp::dup(const string &suffix) const {
+unique_ptr<Instr> X86IntrinBinOp::dup(Function &f, const string &suffix) const {
   return make_unique<X86IntrinBinOp>(getType(), getName() + suffix, *a, *b, op);
 }
 
