@@ -519,6 +519,12 @@ known_call(llvm::CallInst &i, const llvm::TargetLibraryInfo &TLI,
     RETURN_EXACT();
 
   auto decl = i.getCalledFunction();
+
+  if (decl && decl->hasName() && decl->getName().startswith("__fksv")) {
+    RETURN_VAL(
+      make_unique<FakeShuffle>(*ty, value_name(i), *args[0], *args[1], *args[2]));
+  }
+
   llvm::LibFunc libfn;
   if (!decl || !TLI.getLibFunc(*decl, libfn) || !TLI.has(libfn))
     RETURN_EXACT();
