@@ -478,7 +478,7 @@ public:
   void print(std::ostream &os) const override;
   StateValue toSMT(State &s) const override;
   smt::expr getTypeConstraints(const Function &f) const override;
-  std::unique_ptr<Instr> 
+  std::unique_ptr<Instr>
     dup(Function &f, const std::string &suffix) const override;
 };
 
@@ -1218,12 +1218,18 @@ public:
 #include "intrinsics.h"
 #undef PROCESS
   };
+  static constexpr std::array<unsigned, numOfX86Intrinsics> ret_width = {
+#define PROCESS(NAME,A,B,C,D,E,F) A * B,
+#include "intrinsics.h"
+#undef PROCESS
+  };
 
 private:
   Value *a, *b;
   Op op;
 
 public:
+  static unsigned getRetWidth(Op op) { return ret_width[op]; }
   X86IntrinBinOp(Type &type, std::string &&name, Value &a, Value &b, Op op)
     : Instr(type, move(name)), a(&a), b(&b), op(op) {}
   std::vector<Value*> operands() const override;
