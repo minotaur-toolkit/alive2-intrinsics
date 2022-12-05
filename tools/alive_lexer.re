@@ -49,7 +49,7 @@ const char *const token_name[] = {
 };
 
 static void error(string &&str) {
-  throw LexException("[Lex] " + move(str), yylineno);
+  throw LexException("[Lex] " + std::move(str), yylineno);
 }
 
 static void COPY_STR(unsigned off = 0) {
@@ -228,10 +228,12 @@ space+ {
 "noreturn" { return NORETURN; }
 "willreturn" { return WILLRETURN; }
 "freeze" { return FREEZE; }
-"malloc" { return MALLOC; }
-"free" { return FREE; }
 "fshl" { return FSHL; }
 "fshr" { return FSHR; }
+"smul_fix" { return SMULFIX; }
+"umul_fix" { return UMULFIX; }
+"smul_fix_sat" { return SMULFIXSAT; }
+"umul_fix_sat" { return UMULFIXSAT; }
 "fma" { return FMA; }
 "fmax" { return FMAX; }
 "fmin" { return FMIN; }

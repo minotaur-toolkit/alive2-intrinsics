@@ -30,6 +30,33 @@ using llvm::LLVMContext;
 
 namespace {
 
+FpRoundingMode parse_rounding(llvm::Instruction &i) {
+  auto *fp = dyn_cast<llvm::ConstrainedFPIntrinsic>(&i);
+  if (!fp || !fp->getRoundingMode().has_value())
+    return {};
+  switch (*fp->getRoundingMode()) {
+  case llvm::RoundingMode::Dynamic:           return FpRoundingMode::Dynamic;
+  case llvm::RoundingMode::NearestTiesToAway: return FpRoundingMode::RNA;
+  case llvm::RoundingMode::NearestTiesToEven: return FpRoundingMode::RNE;
+  case llvm::RoundingMode::TowardNegative:    return FpRoundingMode::RTN;
+  case llvm::RoundingMode::TowardPositive:    return FpRoundingMode::RTP;
+  case llvm::RoundingMode::TowardZero:        return FpRoundingMode::RTZ;
+  default: UNREACHABLE();
+  }
+}
+
+FpExceptionMode parse_exceptions(llvm::Instruction &i) {
+  auto *fp = dyn_cast<llvm::ConstrainedFPIntrinsic>(&i);
+  if (!fp || !fp->getExceptionBehavior().has_value())
+    return {};
+  switch (*fp->getExceptionBehavior()) {
+  case llvm::fp::ebIgnore:  return FpExceptionMode::Ignore;
+  case llvm::fp::ebMayTrap: return FpExceptionMode::MayTrap;
+  case llvm::fp::ebStrict:  return FpExceptionMode::Strict;
+  default: UNREACHABLE();
+  }
+}
+
 unsigned constexpr_idx;
 unsigned copy_idx;
 unsigned alignopbundle_idx;
@@ -74,9 +101,13 @@ class llvm2alive_ : public llvm::InstVisitor<llvm2alive_, unique_ptr<Instr>> {
   BasicBlock *BB;
   llvm::Function &f;
   const llvm::TargetLibraryInfo &TLI;
+  /// True if converting a source function, false when converting a target
+  /// function.
+  bool IsSrc;
   vector<llvm::Instruction*> i_constexprs;
   const vector<string_view> &gvnamesInSrc;
-  vector<tuple<Phi*, llvm::PHINode*, unsigned>> todo_phis;
+  vector<pair<Phi*, llvm::PHINode*>> todo_phis;
+  const Instr *insert_constexpr_before = nullptr;
   ostream *out;
   // (LLVM alloca, (Alive2 alloc, has lifetime.start?))
   map<const llvm::AllocaInst *, std::pair<Alloc *, bool>> allocs;
@@ -88,13 +119,13 @@ class llvm2alive_ : public llvm::InstVisitor<llvm2alive_, unique_ptr<Instr>> {
 
   template <typename T>
   uint64_t alignment(T &i, llvm::Type *ty) const {
-    auto a = i.getAlignment();
+    auto a = i.getAlign().value();
     return a != 0 ? a : DL().getABITypeAlignment(ty);
   }
 
   template <typename T>
   uint64_t pref_alignment(T &i, llvm::Type *ty) const {
-    auto a = i.getAlignment();
+    auto a = i.getAlign().value();
     return a != 0 ? a : DL().getPrefTypeAlignment(ty);
   }
 
@@ -108,7 +139,10 @@ class llvm2alive_ : public llvm::InstVisitor<llvm2alive_, unique_ptr<Instr>> {
       return nullptr;
 
     auto i = ptr.get();
-    BB->addInstr(move(ptr));
+    if (insert_constexpr_before)
+      BB->addInstrAt(std::move(ptr), insert_constexpr_before, true);
+    else
+      BB->addInstr(std::move(ptr));
     return i;
   }
 
@@ -117,7 +151,10 @@ class llvm2alive_ : public llvm::InstVisitor<llvm2alive_, unique_ptr<Instr>> {
                                   "%__copy_" + to_string(copy_idx++), *ag,
                                   UnaryOp::Copy);
     auto val = v.get();
-    BB->addInstr(move(v));
+    if (insert_constexpr_before)
+      BB->addInstrAt(std::move(v), insert_constexpr_before, true);
+    else
+      BB->addInstr(std::move(v));
     return val;
   }
 
@@ -135,9 +172,10 @@ class llvm2alive_ : public llvm::InstVisitor<llvm2alive_, unique_ptr<Instr>> {
   }
 
 public:
-  llvm2alive_(llvm::Function &f, const llvm::TargetLibraryInfo &TLI,
+  llvm2alive_(llvm::Function &f, const llvm::TargetLibraryInfo &TLI, bool IsSrc,
               const vector<string_view> &gvnamesInSrc)
-      : f(f), TLI(TLI), gvnamesInSrc(gvnamesInSrc), out(&get_outs()) {}
+      : f(f), TLI(TLI), IsSrc(IsSrc), gvnamesInSrc(gvnamesInSrc),
+        out(&get_outs()) {}
 
   ~llvm2alive_() {
     for (auto &inst : i_constexprs) {
@@ -148,19 +186,21 @@ public:
 
   RetTy visitUnaryOperator(llvm::UnaryOperator &i) {
     PARSE_UNOP();
-    UnaryOp::Op op;
+    FpUnaryOp::Op op;
     switch (i.getOpcode()) {
-    case llvm::Instruction::FNeg: op = UnaryOp::FNeg; break;
+    case llvm::Instruction::FNeg: op = FpUnaryOp::FNeg; break;
     default:
       return error(i);
     }
-    RETURN_IDENTIFIER(make_unique<UnaryOp>(*ty, value_name(i), *val, op,
-                                           parse_fmath(i)));
+    RETURN_IDENTIFIER(
+      make_unique<FpUnaryOp>(*ty, value_name(i), *val, op, parse_fmath(i)));
   }
 
   RetTy visitBinaryOperator(llvm::BinaryOperator &i) {
     PARSE_BINOP();
     BinOp::Op alive_op;
+    FpBinOp::Op fp_op;
+    bool is_fp = false;
     switch (i.getOpcode()) {
     case llvm::Instruction::Add:  alive_op = BinOp::Add; break;
     case llvm::Instruction::Sub:  alive_op = BinOp::Sub; break;
@@ -175,14 +215,18 @@ public:
     case llvm::Instruction::And:  alive_op = BinOp::And; break;
     case llvm::Instruction::Or:   alive_op = BinOp::Or; break;
     case llvm::Instruction::Xor:  alive_op = BinOp::Xor; break;
-    case llvm::Instruction::FAdd: alive_op = BinOp::FAdd; break;
-    case llvm::Instruction::FSub: alive_op = BinOp::FSub; break;
-    case llvm::Instruction::FMul: alive_op = BinOp::FMul; break;
-    case llvm::Instruction::FDiv: alive_op = BinOp::FDiv; break;
-    case llvm::Instruction::FRem: alive_op = BinOp::FRem; break;
+    case llvm::Instruction::FAdd: fp_op = FpBinOp::FAdd; is_fp = true; break;
+    case llvm::Instruction::FSub: fp_op = FpBinOp::FSub; is_fp = true; break;
+    case llvm::Instruction::FMul: fp_op = FpBinOp::FMul; is_fp = true; break;
+    case llvm::Instruction::FDiv: fp_op = FpBinOp::FDiv; is_fp = true; break;
+    case llvm::Instruction::FRem: fp_op = FpBinOp::FRem; is_fp = true; break;
     default:
       return error(i);
     }
+
+    if (is_fp)
+      RETURN_IDENTIFIER(make_unique<FpBinOp>(*ty, value_name(i), *a, *b, fp_op,
+                                             parse_fmath(i)));
 
     unsigned flags = BinOp::None;
     if (isa<llvm::OverflowingBinaryOperator>(i) && i.hasNoSignedWrap())
@@ -192,29 +236,41 @@ public:
     if (isa<llvm::PossiblyExactOperator>(i) && i.isExact())
       flags = BinOp::Exact;
     RETURN_IDENTIFIER(make_unique<BinOp>(*ty, value_name(i), *a, *b, alive_op,
-                                         flags, parse_fmath(i)));
+                                         flags));
   }
 
   RetTy visitCastInst(llvm::CastInst &i) {
     PARSE_UNOP();
-    ConversionOp::Op op;
+    {
+      ConversionOp::Op op;
+      bool has_non_fp = true;
+      switch (i.getOpcode()) {
+      case llvm::Instruction::SExt:     op = ConversionOp::SExt; break;
+      case llvm::Instruction::ZExt:     op = ConversionOp::ZExt; break;
+      case llvm::Instruction::Trunc:    op = ConversionOp::Trunc; break;
+      case llvm::Instruction::BitCast:  op = ConversionOp::BitCast; break;
+      case llvm::Instruction::PtrToInt: op = ConversionOp::Ptr2Int; break;
+      case llvm::Instruction::IntToPtr: op = ConversionOp::Int2Ptr; break;
+      default: has_non_fp = false; break;
+      }
+      if (has_non_fp)
+        RETURN_IDENTIFIER(
+          make_unique<ConversionOp>(*ty, value_name(i), *val, op));
+    }
+
+    FpConversionOp::Op op;
     switch (i.getOpcode()) {
-    case llvm::Instruction::SExt:     op = ConversionOp::SExt; break;
-    case llvm::Instruction::ZExt:     op = ConversionOp::ZExt; break;
-    case llvm::Instruction::Trunc:    op = ConversionOp::Trunc; break;
-    case llvm::Instruction::BitCast:  op = ConversionOp::BitCast; break;
-    case llvm::Instruction::SIToFP:   op = ConversionOp::SIntToFP; break;
-    case llvm::Instruction::UIToFP:   op = ConversionOp::UIntToFP; break;
-    case llvm::Instruction::FPToSI:   op = ConversionOp::FPToSInt; break;
-    case llvm::Instruction::FPToUI:   op = ConversionOp::FPToUInt; break;
-    case llvm::Instruction::PtrToInt: op = ConversionOp::Ptr2Int; break;
-    case llvm::Instruction::IntToPtr: op = ConversionOp::Int2Ptr; break;
-    case llvm::Instruction::FPExt:    op = ConversionOp::FPExt; break;
-    case llvm::Instruction::FPTrunc:  op = ConversionOp::FPTrunc; break;
+    case llvm::Instruction::SIToFP:  op = FpConversionOp::SIntToFP; break;
+    case llvm::Instruction::UIToFP:  op = FpConversionOp::UIntToFP; break;
+    case llvm::Instruction::FPToSI:  op = FpConversionOp::FPToSInt; break;
+    case llvm::Instruction::FPToUI:  op = FpConversionOp::FPToUInt; break;
+    case llvm::Instruction::FPExt:   op = FpConversionOp::FPExt; break;
+    case llvm::Instruction::FPTrunc: op = FpConversionOp::FPTrunc; break;
     default:
       return error(i);
     }
-    RETURN_IDENTIFIER(make_unique<ConversionOp>(*ty, value_name(i), *val, op));
+    RETURN_IDENTIFIER(
+      make_unique<FpConversionOp>(*ty, value_name(i), *val, op));
   }
 
   RetTy visitFreezeInst(llvm::FreezeInst &i) {
@@ -233,15 +289,20 @@ public:
 
     FnAttrs attrs;
     vector<ParamAttrs> param_attrs;
-    if (!approx) {
-      // call_val, attrs, param_attrs, approx
-      auto known = known_call(i, TLI, *BB, args);
-      if (get<0>(known))
-        RETURN_IDENTIFIER(move(get<0>(known)));
 
-      attrs       = move(get<1>(known));
-      param_attrs = move(get<2>(known));
-      approx      = get<3>(known);
+    parse_fn_attrs(i, attrs);
+
+    if (auto op = dyn_cast<llvm::FPMathOperator>(&i)) {
+      if (op->hasNoNaNs())
+        attrs.set(FnAttrs::NNaN);
+    }
+
+    if (!approx) {
+      auto [known, approx0]
+        = known_call(i, TLI, *BB, args, std::move(attrs), param_attrs);
+      approx = approx0;
+      if (known)
+        RETURN_IDENTIFIER(std::move(known));
     }
 
     auto ty = llvm_type2alive(i.getType());
@@ -256,7 +317,8 @@ public:
       if (!iasm->canThrow())
         attrs.set(FnAttrs::NoThrow);
       call = make_unique<InlineAsm>(*ty, value_name(i), iasm->getAsmString(),
-                                    iasm->getConstraintString(), move(attrs));
+                                    iasm->getConstraintString(),
+                                    std::move(attrs));
     } else {
       if (!fn) // TODO: support indirect calls
         return error(i);
@@ -268,22 +330,10 @@ public:
     llvm::AttributeList attrs_callsite = i.getAttributes();
     llvm::AttributeList attrs_fndef = fn ? fn->getAttributes()
                                          : llvm::AttributeList();
-    const auto &ret = llvm::AttributeList::ReturnIndex;
-    const auto &fnidx = llvm::AttributeList::FunctionIndex;
-
-    handleRetAttrs(attrs_callsite.getAttributes(ret), attrs);
-    handleRetAttrs(attrs_fndef.getAttributes(ret), attrs);
-    handleFnAttrs(attrs_callsite.getAttributes(fnidx), attrs);
-    handleFnAttrs(attrs_fndef.getAttributes(fnidx), attrs);
-
-    if (auto op = dyn_cast<llvm::FPMathOperator>(&i)) {
-      if (op->hasNoNaNs())
-        attrs.set(FnAttrs::NNaN);
-    }
 
     if (fn)
       call = make_unique<FnCall>(*ty, value_name(i),
-                                 '@' + fn->getName().str(), move(attrs));
+                                 '@' + fn->getName().str(), std::move(attrs));
     unique_ptr<Instr> ret_val;
 
     for (uint64_t argidx = 0, nargs = i.arg_size(); argidx < nargs; ++argidx) {
@@ -312,7 +362,7 @@ public:
         for (auto &[arg, flags] : call->getArgs()) {
           call2->addArg(*arg, ParamAttrs(flags));
         }
-        call = move(call2);
+        call = std::move(call2);
 
         // fn may have different type than argument. LLVM assumes there's
         // an implicit bitcast
@@ -325,16 +375,16 @@ public:
                                               ConversionOp::BitCast);
       }
 
-      call->addArg(*arg, move(pattr));
+      call->addArg(*arg, std::move(pattr));
     }
 
     call->setApproximated(approx);
 
     if (ret_val) {
-      BB->addInstr(move(call));
-      RETURN_IDENTIFIER(move(ret_val));
+      BB->addInstr(std::move(call));
+      RETURN_IDENTIFIER(std::move(ret_val));
     }
-    RETURN_IDENTIFIER(move(call));
+    RETURN_IDENTIFIER(std::move(call));
   }
 
   RetTy visitMemSetInst(llvm::MemSetInst &i) {
@@ -401,16 +451,8 @@ public:
     case llvm::CmpInst::FCMP_ULE:   cond = FCmp::ULE; break;
     case llvm::CmpInst::FCMP_UNE:   cond = FCmp::UNE; break;
     case llvm::CmpInst::FCMP_UNO:   cond = FCmp::UNO; break;
-    case llvm::CmpInst::FCMP_TRUE: {
-      auto tru = get_operand(llvm::ConstantInt::getTrue(i.getType()));
-      RETURN_IDENTIFIER(make_unique<UnaryOp>(*ty, value_name(i), *tru,
-                                             UnaryOp::Copy));
-    }
-    case llvm::CmpInst::FCMP_FALSE: {
-      auto fals = get_operand(llvm::ConstantInt::getFalse(i.getType()));
-      RETURN_IDENTIFIER(make_unique<UnaryOp>(*ty, value_name(i), *fals,
-                                             UnaryOp::Copy));
-    }
+    case llvm::CmpInst::FCMP_TRUE:  cond = FCmp::TRUE; break;
+    case llvm::CmpInst::FCMP_FALSE: cond = FCmp::FALSE; break;
     default:
       UNREACHABLE();
     }
@@ -440,7 +482,7 @@ public:
       valty = &aty->getChild(idx_with_paddings);
     }
 
-    RETURN_IDENTIFIER(move(inst));
+    RETURN_IDENTIFIER(std::move(inst));
   }
 
   RetTy visitInsertValueInst(llvm::InsertValueInst &i) {
@@ -459,7 +501,7 @@ public:
       ty = &aty->getChild(idx_with_paddings);
     }
 
-    RETURN_IDENTIFIER(move(inst));
+    RETURN_IDENTIFIER(std::move(inst));
   }
 
   RetTy visitAllocaInst(llvm::AllocaInst &i) {
@@ -481,7 +523,7 @@ public:
     auto alloc = make_unique<Alloc>(*ty, value_name(i), *size, mul,
                       pref_alignment(i, i.getAllocatedType()));
     allocs.emplace(&i, make_pair(alloc.get(), /*has lifetime.start?*/ false));
-    RETURN_IDENTIFIER(move(alloc));
+    RETURN_IDENTIFIER(std::move(alloc));
   }
 
   RetTy visitGetElementPtrInst(llvm::GetElementPtrInst &i) {
@@ -540,7 +582,7 @@ public:
       gep->addIdx(DL().getTypeAllocSize(I.getIndexedType()).getKnownMinValue(),
                   *op);
     }
-    RETURN_IDENTIFIER(move(gep));
+    RETURN_IDENTIFIER(std::move(gep));
   }
 
   RetTy visitLoadInst(llvm::LoadInst &i) {
@@ -569,16 +611,9 @@ public:
     if (!ty)
       return error(i);
 
-    auto phi = make_unique<Phi>(*ty, value_name(i));
-    for (unsigned idx = 0, e = i.getNumIncomingValues(); idx != e; ++idx) {
-      if (auto op = get_operand(i.getIncomingValue(idx))) {
-        phi->addValue(*op, value_name(*i.getIncomingBlock(idx)));
-      } else {
-        todo_phis.emplace_back(phi.get(), &i, idx);
-      }
-    }
-
-    RETURN_IDENTIFIER(move(phi));
+    auto phi = make_unique<Phi>(*ty, value_name(i), parse_fmath(i));
+    todo_phis.emplace_back(phi.get(), &i);
+    RETURN_IDENTIFIER(std::move(phi));
   }
 
   RetTy visitBranchInst(llvm::BranchInst &i) {
@@ -643,12 +678,12 @@ public:
     llvm::SmallVector<const llvm::Value *> Objs;
     llvm::getUnderlyingObjects(Ptr, Objs);
 
-    if (llvm::all_of(Objs, [this](const llvm::Value *V) {
+    if (llvm::all_of(Objs, [](const llvm::Value *V) {
         // Stack coloring algorithm doesn't assign slots for global variables
         // or objects passed as pointer arguments
-        return llvm::isa<llvm::Argument>(V) ||
-               llvm::isa<llvm::GlobalVariable>(V) ||
-               llvm::isAllocLikeFn(V, &TLI); }))
+        return llvm::isa<llvm::Argument,
+                         llvm::GlobalVariable,
+                         llvm::CallInst>(V); }))
       return LIFETIME_FILLPOISON;
 
     Objs.clear();
@@ -745,11 +780,11 @@ public:
             gep->addIdx(-1ull, *get_operand(bundle.Inputs[2].get()));
 
             aptr = gep.get();
-            BB->addInstr(move(gep));
+            BB->addInstr(std::move(gep));
           }
 
           vector<Value *> args = {aptr, aalign};
-          BB->addInstr(make_unique<Assume>(move(args), Assume::Align));
+          BB->addInstr(make_unique<Assume>(std::move(args), Assume::Align));
         } else if (name == "nonnull") {
           llvm::Value *ptr = bundle.Inputs[0].get();
           auto *aptr = get_operand(ptr);
@@ -807,47 +842,29 @@ public:
       case llvm::Intrinsic::smin:     op = BinOp::SMin; break;
       case llvm::Intrinsic::smax:     op = BinOp::SMax; break;
       case llvm::Intrinsic::abs:      op = BinOp::Abs; break;
-      default:
-        UNREACHABLE();
+      default: UNREACHABLE();
       }
       RETURN_IDENTIFIER(make_unique<BinOp>(*ty, value_name(i), *a, *b, op));
     }
     case llvm::Intrinsic::bitreverse:
     case llvm::Intrinsic::bswap:
-    case llvm::Intrinsic::ceil:
     case llvm::Intrinsic::ctpop:
     case llvm::Intrinsic::expect:
     case llvm::Intrinsic::expect_with_probability:
-    case llvm::Intrinsic::fabs:
-    case llvm::Intrinsic::floor:
-    case llvm::Intrinsic::is_constant:
-    //case llvm::Intrinsic::isnan:
-    case llvm::Intrinsic::round:
-    case llvm::Intrinsic::roundeven:
-    case llvm::Intrinsic::sqrt:
-    case llvm::Intrinsic::trunc: {
+    case llvm::Intrinsic::is_constant: {
       PARSE_UNOP();
       UnaryOp::Op op;
       switch (i.getIntrinsicID()) {
       case llvm::Intrinsic::bitreverse:  op = UnaryOp::BitReverse; break;
       case llvm::Intrinsic::bswap:       op = UnaryOp::BSwap; break;
-      case llvm::Intrinsic::ceil:        op = UnaryOp::Ceil; break;
       case llvm::Intrinsic::ctpop:       op = UnaryOp::Ctpop; break;
       case llvm::Intrinsic::expect:
       case llvm::Intrinsic::expect_with_probability:
         op = UnaryOp::Copy; break;
-      case llvm::Intrinsic::fabs:        op = UnaryOp::FAbs; break;
-      case llvm::Intrinsic::floor:       op = UnaryOp::Floor; break;
       case llvm::Intrinsic::is_constant: op = UnaryOp::IsConstant; break;
-      ///case llvm::Intrinsic::isnan:       op = UnaryOp::IsNaN; break;
-      case llvm::Intrinsic::round:       op = UnaryOp::Round; break;
-      case llvm::Intrinsic::roundeven:   op = UnaryOp::RoundEven; break;
-      case llvm::Intrinsic::sqrt:        op = UnaryOp::Sqrt; break;
-      case llvm::Intrinsic::trunc:       op = UnaryOp::Trunc; break;
       default: UNREACHABLE();
       }
-      RETURN_IDENTIFIER(make_unique<UnaryOp>(*ty, value_name(i), *val, op,
-                                             parse_fmath(i)));
+      RETURN_IDENTIFIER(make_unique<UnaryOp>(*ty, value_name(i), *val, op));
     }
     case llvm::Intrinsic::vector_reduce_add:
     case llvm::Intrinsic::vector_reduce_mul:
@@ -877,48 +894,184 @@ public:
     }
     case llvm::Intrinsic::fshl:
     case llvm::Intrinsic::fshr:
-    case llvm::Intrinsic::fma:
+    case llvm::Intrinsic::smul_fix:
+    case llvm::Intrinsic::umul_fix:
+    case llvm::Intrinsic::smul_fix_sat:
+    case llvm::Intrinsic::umul_fix_sat:
     {
       PARSE_TRIOP();
       TernaryOp::Op op;
       switch (i.getIntrinsicID()) {
       case llvm::Intrinsic::fshl: op = TernaryOp::FShl; break;
       case llvm::Intrinsic::fshr: op = TernaryOp::FShr; break;
-      case llvm::Intrinsic::fma:  op = TernaryOp::FMA; break;
+      case llvm::Intrinsic::smul_fix: op = TernaryOp::SMulFix; break;
+      case llvm::Intrinsic::umul_fix: op = TernaryOp::UMulFix; break;
+      case llvm::Intrinsic::smul_fix_sat: op = TernaryOp::SMulFixSat; break;
+      case llvm::Intrinsic::umul_fix_sat: op = TernaryOp::UMulFixSat; break;
       default: UNREACHABLE();
       }
-      RETURN_IDENTIFIER(make_unique<TernaryOp>(*ty, value_name(i), *a, *b, *c,
-                                               op, parse_fmath(i)));
+      RETURN_IDENTIFIER(
+        make_unique<TernaryOp>(*ty, value_name(i), *a, *b, *c, op));
     }
+    case llvm::Intrinsic::fma:
+    case llvm::Intrinsic::fmuladd:
+    case llvm::Intrinsic::experimental_constrained_fma:
+    case llvm::Intrinsic::experimental_constrained_fmuladd:
+    {
+      PARSE_TRIOP();
+      FpTernaryOp::Op op;
+      switch (i.getIntrinsicID()) {
+      case llvm::Intrinsic::fma:
+      case llvm::Intrinsic::experimental_constrained_fma:     op = FpTernaryOp::FMA; break;
+      case llvm::Intrinsic::fmuladd:
+      case llvm::Intrinsic::experimental_constrained_fmuladd: op = FpTernaryOp::MulAdd; break;
+      default: UNREACHABLE();
+      }
+      RETURN_IDENTIFIER(
+        make_unique<FpTernaryOp>(*ty, value_name(i), *a, *b, *c, op,
+                                 parse_fmath(i), parse_rounding(i),
+                                 parse_exceptions(i)));
+    }
+    case llvm::Intrinsic::copysign:
     case llvm::Intrinsic::minnum:
     case llvm::Intrinsic::maxnum:
     case llvm::Intrinsic::minimum:
     case llvm::Intrinsic::maximum:
+    case llvm::Intrinsic::experimental_constrained_fadd:
+    case llvm::Intrinsic::experimental_constrained_fsub:
+    case llvm::Intrinsic::experimental_constrained_fmul:
+    case llvm::Intrinsic::experimental_constrained_fdiv:
+    case llvm::Intrinsic::experimental_constrained_minnum:
+    case llvm::Intrinsic::experimental_constrained_maxnum:
+    case llvm::Intrinsic::experimental_constrained_minimum:
+    case llvm::Intrinsic::experimental_constrained_maximum:
     {
       PARSE_BINOP();
-      BinOp::Op op;
+      FpBinOp::Op op;
       switch (i.getIntrinsicID()) {
-      case llvm::Intrinsic::minnum:   op = BinOp::FMin; break;
-      case llvm::Intrinsic::maxnum:   op = BinOp::FMax; break;
-      case llvm::Intrinsic::minimum:  op = BinOp::FMinimum; break;
-      case llvm::Intrinsic::maximum:  op = BinOp::FMaximum; break;
+      case llvm::Intrinsic::copysign:                         op = FpBinOp::CopySign; break;
+      case llvm::Intrinsic::minnum:
+      case llvm::Intrinsic::experimental_constrained_minnum:  op = FpBinOp::FMin; break;
+      case llvm::Intrinsic::maxnum:
+      case llvm::Intrinsic::experimental_constrained_maxnum:  op = FpBinOp::FMax; break;
+      case llvm::Intrinsic::minimum:
+      case llvm::Intrinsic::experimental_constrained_minimum: op = FpBinOp::FMinimum; break;
+      case llvm::Intrinsic::maximum:
+      case llvm::Intrinsic::experimental_constrained_maximum: op = FpBinOp::FMaximum; break;
+      case llvm::Intrinsic::experimental_constrained_fadd:    op = FpBinOp::FAdd; break;
+      case llvm::Intrinsic::experimental_constrained_fsub:    op = FpBinOp::FSub; break;
+      case llvm::Intrinsic::experimental_constrained_fmul:    op = FpBinOp::FMul; break;
+      case llvm::Intrinsic::experimental_constrained_fdiv:    op = FpBinOp::FDiv; break;
       default: UNREACHABLE();
       }
-      RETURN_IDENTIFIER(make_unique<BinOp>(*ty, value_name(i), *a, *b,
-                                           op, BinOp::None, parse_fmath(i)));
+      RETURN_IDENTIFIER(
+        make_unique<FpBinOp>(*ty, value_name(i), *a, *b, op, parse_fmath(i),
+                             parse_rounding(i), parse_exceptions(i)));
+    }
+    case llvm::Intrinsic::fabs:
+    case llvm::Intrinsic::ceil:
+    case llvm::Intrinsic::experimental_constrained_ceil:
+    case llvm::Intrinsic::floor:
+    case llvm::Intrinsic::experimental_constrained_floor:
+    case llvm::Intrinsic::rint:
+    case llvm::Intrinsic::experimental_constrained_rint:
+    case llvm::Intrinsic::nearbyint:
+    case llvm::Intrinsic::experimental_constrained_nearbyint:
+    case llvm::Intrinsic::round:
+    case llvm::Intrinsic::experimental_constrained_round:
+    case llvm::Intrinsic::roundeven:
+    case llvm::Intrinsic::experimental_constrained_roundeven:
+    case llvm::Intrinsic::sqrt:
+    case llvm::Intrinsic::experimental_constrained_sqrt:
+    case llvm::Intrinsic::trunc:
+    case llvm::Intrinsic::experimental_constrained_trunc:
+    {
+      PARSE_UNOP();
+      FpUnaryOp::Op op;
+      switch (i.getIntrinsicID()) {
+      case llvm::Intrinsic::fabs:                               op = FpUnaryOp::FAbs; break;
+      case llvm::Intrinsic::ceil:
+      case llvm::Intrinsic::experimental_constrained_ceil:      op = FpUnaryOp::Ceil; break;
+      case llvm::Intrinsic::floor:
+      case llvm::Intrinsic::experimental_constrained_floor:     op = FpUnaryOp::Floor; break;
+      case llvm::Intrinsic::rint:
+      case llvm::Intrinsic::experimental_constrained_rint:      op = FpUnaryOp::RInt; break;
+      case llvm::Intrinsic::nearbyint:
+      case llvm::Intrinsic::experimental_constrained_nearbyint: op = FpUnaryOp::NearbyInt; break;
+      case llvm::Intrinsic::round:
+      case llvm::Intrinsic::experimental_constrained_round:     op = FpUnaryOp::Round; break;
+      case llvm::Intrinsic::roundeven:
+      case llvm::Intrinsic::experimental_constrained_roundeven: op = FpUnaryOp::RoundEven; break;
+      case llvm::Intrinsic::sqrt:
+      case llvm::Intrinsic::experimental_constrained_sqrt:      op = FpUnaryOp::Sqrt; break;
+      case llvm::Intrinsic::trunc:
+      case llvm::Intrinsic::experimental_constrained_trunc:     op = FpUnaryOp::Trunc; break;
+      default: UNREACHABLE();
+      }
+      RETURN_IDENTIFIER(
+        make_unique<FpUnaryOp>(*ty, value_name(i), *val, op, parse_fmath(i),
+                               parse_rounding(i), parse_exceptions(i)));
+    }
+    case llvm::Intrinsic::experimental_constrained_sitofp:
+    case llvm::Intrinsic::experimental_constrained_uitofp:
+    case llvm::Intrinsic::experimental_constrained_fptosi:
+    case llvm::Intrinsic::experimental_constrained_fptoui:
+    case llvm::Intrinsic::experimental_constrained_fpext:
+    case llvm::Intrinsic::experimental_constrained_fptrunc:
+    case llvm::Intrinsic::lrint:
+    case llvm::Intrinsic::experimental_constrained_lrint:
+    case llvm::Intrinsic::llrint:
+    case llvm::Intrinsic::experimental_constrained_llrint:
+    case llvm::Intrinsic::lround:
+    case llvm::Intrinsic::experimental_constrained_lround:
+    case llvm::Intrinsic::llround:
+    case llvm::Intrinsic::experimental_constrained_llround:
+    {
+      PARSE_UNOP();
+      FpConversionOp::Op op;
+      switch (i.getIntrinsicID()) {
+      case llvm::Intrinsic::experimental_constrained_sitofp:  op = FpConversionOp::SIntToFP; break;
+      case llvm::Intrinsic::experimental_constrained_uitofp:  op = FpConversionOp::UIntToFP; break;
+      case llvm::Intrinsic::experimental_constrained_fptosi:  op = FpConversionOp::FPToSInt; break;
+      case llvm::Intrinsic::experimental_constrained_fptoui:  op = FpConversionOp::FPToUInt; break;
+      case llvm::Intrinsic::experimental_constrained_fpext:   op = FpConversionOp::FPExt; break;
+      case llvm::Intrinsic::experimental_constrained_fptrunc: op = FpConversionOp::FPTrunc; break;
+      case llvm::Intrinsic::lrint:
+      case llvm::Intrinsic::experimental_constrained_lrint:
+      case llvm::Intrinsic::llrint:
+      case llvm::Intrinsic::experimental_constrained_llrint:  op = FpConversionOp::LRInt; break;
+      case llvm::Intrinsic::lround:
+      case llvm::Intrinsic::experimental_constrained_lround:
+      case llvm::Intrinsic::llround:
+      case llvm::Intrinsic::experimental_constrained_llround: op = FpConversionOp::LRound; break;
+      default: UNREACHABLE();
+      }
+      RETURN_IDENTIFIER(make_unique<FpConversionOp>(*ty, value_name(i), *val,
+                                                    op, parse_rounding(i),
+                                                    parse_exceptions(i)));
+    }
+    case llvm::Intrinsic::is_fpclass:
+    {
+      PARSE_BINOP();
+      TestOp::Op op;
+      switch (i.getIntrinsicID()) {
+      case llvm::Intrinsic::is_fpclass: op = TestOp::Is_FPClass; break;
+      default: UNREACHABLE();
+      }
+      RETURN_IDENTIFIER(make_unique<TestOp>(*ty, value_name(i), *a, *b, op));
     }
     case llvm::Intrinsic::lifetime_start:
     case llvm::Intrinsic::lifetime_end:
     {
       PARSE_BINOP();
-      switch(getLifetimeKind(i)) {
+      switch (getLifetimeKind(i)) {
       case LIFETIME_START:
         RETURN_IDENTIFIER(make_unique<StartLifetime>(*b));
       case LIFETIME_START_FILLPOISON:
         BB->addInstr(make_unique<StartLifetime>(*b));
         RETURN_IDENTIFIER(make_unique<FillPoison>(*b));
       case LIFETIME_FREE:
-        RETURN_IDENTIFIER(make_unique<Free>(*b, false));
+        RETURN_IDENTIFIER(make_unique<EndLifetime>(*b));
       case LIFETIME_FILLPOISON:
         RETURN_IDENTIFIER(make_unique<FillPoison>(*b));
       case LIFETIME_NOP:
@@ -929,16 +1082,19 @@ public:
     }
     case llvm::Intrinsic::sideeffect: {
       FnAttrs attrs;
+      parse_fn_attrs(i, attrs);
       attrs.set(FnAttrs::InaccessibleMemOnly);
       attrs.set(FnAttrs::WillReturn);
       attrs.set(FnAttrs::NoThrow);
-      return make_unique<FnCall>(Type::voidTy, "", "#sideeffect", move(attrs));
+      return
+        make_unique<FnCall>(Type::voidTy, "", "#sideeffect", std::move(attrs));
     }
     case llvm::Intrinsic::trap: {
       FnAttrs attrs;
+      parse_fn_attrs(i, attrs);
       attrs.set(FnAttrs::NoReturn);
       attrs.set(FnAttrs::NoThrow);
-      return make_unique<FnCall>(Type::voidTy, "", "#trap", move(attrs));
+      return make_unique<FnCall>(Type::voidTy, "", "#trap", std::move(attrs));
     }
     case llvm::Intrinsic::vastart: {
       PARSE_UNOP();
@@ -966,396 +1122,18 @@ public:
       return NOP(i);
 
     // intel x86 intrinsics
-    case llvm::Intrinsic::x86_sse2_pavg_w:
-    case llvm::Intrinsic::x86_sse2_pavg_b:
-    case llvm::Intrinsic::x86_avx2_pavg_w:
-    case llvm::Intrinsic::x86_avx2_pavg_b:
-    case llvm::Intrinsic::x86_avx512_pavg_w_512:
-    case llvm::Intrinsic::x86_avx512_pavg_b_512:
-    case llvm::Intrinsic::x86_avx2_pshuf_b:
-    case llvm::Intrinsic::x86_ssse3_pshuf_b_128:
-    case llvm::Intrinsic::x86_avx512_pshuf_b_512:
-    case llvm::Intrinsic::x86_mmx_padd_b:
-    case llvm::Intrinsic::x86_mmx_padd_w:
-    case llvm::Intrinsic::x86_mmx_padd_d:
-    case llvm::Intrinsic::x86_mmx_punpckhbw:
-    case llvm::Intrinsic::x86_mmx_punpckhwd:
-    case llvm::Intrinsic::x86_mmx_punpckhdq:
-    case llvm::Intrinsic::x86_mmx_punpcklbw:
-    case llvm::Intrinsic::x86_mmx_punpcklwd:
-    case llvm::Intrinsic::x86_mmx_punpckldq:
-    case llvm::Intrinsic::x86_sse2_psrl_w:
-    case llvm::Intrinsic::x86_sse2_psrl_d:
-    case llvm::Intrinsic::x86_sse2_psrl_q:
-    case llvm::Intrinsic::x86_avx2_psrl_w:
-    case llvm::Intrinsic::x86_avx2_psrl_d:
-    case llvm::Intrinsic::x86_avx2_psrl_q:
-    case llvm::Intrinsic::x86_avx512_psrl_w_512:
-    case llvm::Intrinsic::x86_avx512_psrl_d_512:
-    case llvm::Intrinsic::x86_avx512_psrl_q_512:
-    case llvm::Intrinsic::x86_sse2_psrli_w:
-    case llvm::Intrinsic::x86_sse2_psrli_d:
-    case llvm::Intrinsic::x86_sse2_psrli_q:
-    case llvm::Intrinsic::x86_avx2_psrli_w:
-    case llvm::Intrinsic::x86_avx2_psrli_d:
-    case llvm::Intrinsic::x86_avx2_psrli_q:
-    case llvm::Intrinsic::x86_avx512_psrli_w_512:
-    case llvm::Intrinsic::x86_avx512_psrli_d_512:
-    case llvm::Intrinsic::x86_avx512_psrli_q_512:
-    case llvm::Intrinsic::x86_avx2_psrlv_d:
-    case llvm::Intrinsic::x86_avx2_psrlv_d_256:
-    case llvm::Intrinsic::x86_avx2_psrlv_q:
-    case llvm::Intrinsic::x86_avx2_psrlv_q_256:
-    case llvm::Intrinsic::x86_avx512_psrlv_d_512:
-    case llvm::Intrinsic::x86_avx512_psrlv_q_512:
-    case llvm::Intrinsic::x86_avx512_psrlv_w_128:
-    case llvm::Intrinsic::x86_avx512_psrlv_w_256:
-    case llvm::Intrinsic::x86_avx512_psrlv_w_512:
-    case llvm::Intrinsic::x86_sse2_psra_w:
-    case llvm::Intrinsic::x86_sse2_psra_d:
-    case llvm::Intrinsic::x86_avx2_psra_w:
-    case llvm::Intrinsic::x86_avx2_psra_d:
-    case llvm::Intrinsic::x86_avx512_psra_q_128:
-    case llvm::Intrinsic::x86_avx512_psra_q_256:
-    case llvm::Intrinsic::x86_avx512_psra_w_512:
-    case llvm::Intrinsic::x86_avx512_psra_d_512:
-    case llvm::Intrinsic::x86_avx512_psra_q_512:
-    case llvm::Intrinsic::x86_sse2_psrai_w:
-    case llvm::Intrinsic::x86_sse2_psrai_d:
-    case llvm::Intrinsic::x86_avx2_psrai_w:
-    case llvm::Intrinsic::x86_avx2_psrai_d:
-    case llvm::Intrinsic::x86_avx512_psrai_w_512:
-    case llvm::Intrinsic::x86_avx512_psrai_d_512:
-    case llvm::Intrinsic::x86_avx512_psrai_q_128:
-    case llvm::Intrinsic::x86_avx512_psrai_q_256:
-    case llvm::Intrinsic::x86_avx512_psrai_q_512:
-    case llvm::Intrinsic::x86_avx2_psrav_d:
-    case llvm::Intrinsic::x86_avx2_psrav_d_256:
-    case llvm::Intrinsic::x86_avx512_psrav_d_512:
-    case llvm::Intrinsic::x86_avx512_psrav_q_128:
-    case llvm::Intrinsic::x86_avx512_psrav_q_256:
-    case llvm::Intrinsic::x86_avx512_psrav_q_512:
-    case llvm::Intrinsic::x86_avx512_psrav_w_128:
-    case llvm::Intrinsic::x86_avx512_psrav_w_256:
-    case llvm::Intrinsic::x86_avx512_psrav_w_512:
-    case llvm::Intrinsic::x86_sse2_psll_w:
-    case llvm::Intrinsic::x86_sse2_psll_d:
-    case llvm::Intrinsic::x86_sse2_psll_q:
-    case llvm::Intrinsic::x86_avx2_psll_w:
-    case llvm::Intrinsic::x86_avx2_psll_d:
-    case llvm::Intrinsic::x86_avx2_psll_q:
-    case llvm::Intrinsic::x86_avx512_psll_w_512:
-    case llvm::Intrinsic::x86_avx512_psll_d_512:
-    case llvm::Intrinsic::x86_avx512_psll_q_512:
-    case llvm::Intrinsic::x86_sse2_pslli_w:
-    case llvm::Intrinsic::x86_sse2_pslli_d:
-    case llvm::Intrinsic::x86_sse2_pslli_q:
-    case llvm::Intrinsic::x86_avx2_pslli_w:
-    case llvm::Intrinsic::x86_avx2_pslli_d:
-    case llvm::Intrinsic::x86_avx2_pslli_q:
-    case llvm::Intrinsic::x86_avx512_pslli_w_512:
-    case llvm::Intrinsic::x86_avx512_pslli_d_512:
-    case llvm::Intrinsic::x86_avx512_pslli_q_512:
-    case llvm::Intrinsic::x86_avx2_psllv_d:
-    case llvm::Intrinsic::x86_avx2_psllv_d_256:
-    case llvm::Intrinsic::x86_avx2_psllv_q:
-    case llvm::Intrinsic::x86_avx2_psllv_q_256:
-    case llvm::Intrinsic::x86_avx512_psllv_d_512:
-    case llvm::Intrinsic::x86_avx512_psllv_q_512:
-    case llvm::Intrinsic::x86_avx512_psllv_w_128:
-    case llvm::Intrinsic::x86_avx512_psllv_w_256:
-    case llvm::Intrinsic::x86_avx512_psllv_w_512:
-    case llvm::Intrinsic::x86_ssse3_psign_b_128:
-    case llvm::Intrinsic::x86_ssse3_psign_w_128:
-    case llvm::Intrinsic::x86_ssse3_psign_d_128:
-    case llvm::Intrinsic::x86_avx2_psign_b:
-    case llvm::Intrinsic::x86_avx2_psign_w:
-    case llvm::Intrinsic::x86_avx2_psign_d:
-    case llvm::Intrinsic::x86_ssse3_phadd_w_128:
-    case llvm::Intrinsic::x86_ssse3_phadd_d_128:
-    case llvm::Intrinsic::x86_ssse3_phadd_sw_128:
-    case llvm::Intrinsic::x86_avx2_phadd_w:
-    case llvm::Intrinsic::x86_avx2_phadd_d:
-    case llvm::Intrinsic::x86_avx2_phadd_sw:
-    case llvm::Intrinsic::x86_ssse3_phsub_w_128:
-    case llvm::Intrinsic::x86_ssse3_phsub_d_128:
-    case llvm::Intrinsic::x86_ssse3_phsub_sw_128:
-    case llvm::Intrinsic::x86_avx2_phsub_w:
-    case llvm::Intrinsic::x86_avx2_phsub_d:
-    case llvm::Intrinsic::x86_avx2_phsub_sw:
-    case llvm::Intrinsic::x86_sse2_pmulh_w:
-    case llvm::Intrinsic::x86_avx2_pmulh_w:
-    case llvm::Intrinsic::x86_avx512_pmulh_w_512:
-    case llvm::Intrinsic::x86_sse2_pmulhu_w:
-    case llvm::Intrinsic::x86_avx2_pmulhu_w:
-    case llvm::Intrinsic::x86_avx512_pmulhu_w_512:
-    case llvm::Intrinsic::x86_sse2_pmadd_wd:
-    case llvm::Intrinsic::x86_avx2_pmadd_wd:
-    case llvm::Intrinsic::x86_avx512_pmaddw_d_512:
-    case llvm::Intrinsic::x86_ssse3_pmadd_ub_sw_128:
-    case llvm::Intrinsic::x86_avx2_pmadd_ub_sw:
-    case llvm::Intrinsic::x86_avx512_pmaddubs_w_512: {
+#define PROCESS(NAME,A,B,C,D,E,F) case llvm::Intrinsic::NAME:
+#include "ir/intrinsics.h"
+#undef PROCESS
+      {
       PARSE_BINOP();
       X86IntrinBinOp::Op op;
       switch (i.getIntrinsicID()) {
-      case llvm::Intrinsic::x86_sse2_pavg_w:
-        op = X86IntrinBinOp::sse2_pavg_w; break;
-      case llvm::Intrinsic::x86_sse2_pavg_b:
-        op = X86IntrinBinOp::sse2_pavg_b; break;
-      case llvm::Intrinsic::x86_avx2_pavg_w:
-        op = X86IntrinBinOp::avx2_pavg_w; break;
-      case llvm::Intrinsic::x86_avx2_pavg_b:
-        op = X86IntrinBinOp::avx2_pavg_b; break;
-      case llvm::Intrinsic::x86_avx512_pavg_w_512:
-        op = X86IntrinBinOp::avx512_pavg_w_512; break;
-      case llvm::Intrinsic::x86_avx512_pavg_b_512:
-        op = X86IntrinBinOp::avx512_pavg_b_512; break;
-      case llvm::Intrinsic::x86_avx2_pshuf_b:
-        op = X86IntrinBinOp::avx2_pshuf_b; break;
-      case llvm::Intrinsic::x86_ssse3_pshuf_b_128:
-        op = X86IntrinBinOp::ssse3_pshuf_b_128; break;
-      case llvm::Intrinsic::x86_avx512_pshuf_b_512:
-        op = X86IntrinBinOp::avx512_pshuf_b_512; break;
-      case llvm::Intrinsic::x86_mmx_padd_b:
-        op = X86IntrinBinOp::mmx_padd_b; break;
-      case llvm::Intrinsic::x86_mmx_padd_w:
-        op = X86IntrinBinOp::mmx_padd_w; break;
-      case llvm::Intrinsic::x86_mmx_padd_d:
-        op = X86IntrinBinOp::mmx_padd_d; break;
-      case llvm::Intrinsic::x86_mmx_punpckhbw:
-        op = X86IntrinBinOp::mmx_punpckhbw; break;
-      case llvm::Intrinsic::x86_mmx_punpckhwd:
-        op = X86IntrinBinOp::mmx_punpckhwd; break;
-      case llvm::Intrinsic::x86_mmx_punpckhdq:
-        op = X86IntrinBinOp::mmx_punpckhdq; break;
-      case llvm::Intrinsic::x86_mmx_punpcklbw:
-        op = X86IntrinBinOp::mmx_punpcklbw; break;
-      case llvm::Intrinsic::x86_mmx_punpcklwd:
-        op = X86IntrinBinOp::mmx_punpcklwd; break;
-      case llvm::Intrinsic::x86_mmx_punpckldq:
-        op = X86IntrinBinOp::mmx_punpckldq; break;
-      case llvm::Intrinsic::x86_sse2_psrl_w:
-        op = X86IntrinBinOp::sse2_psrl_w; break;
-      case llvm::Intrinsic::x86_sse2_psrl_d:
-        op = X86IntrinBinOp::sse2_psrl_d; break;
-      case llvm::Intrinsic::x86_sse2_psrl_q:
-        op = X86IntrinBinOp::sse2_psrl_q; break;
-      case llvm::Intrinsic::x86_avx2_psrl_w:
-        op = X86IntrinBinOp::avx2_psrl_w; break;
-      case llvm::Intrinsic::x86_avx2_psrl_d:
-        op = X86IntrinBinOp::avx2_psrl_d; break;
-      case llvm::Intrinsic::x86_avx2_psrl_q:
-        op = X86IntrinBinOp::avx2_psrl_q; break;
-      case llvm::Intrinsic::x86_avx512_psrl_w_512:
-        op = X86IntrinBinOp::avx512_psrl_w_512; break;
-      case llvm::Intrinsic::x86_avx512_psrl_d_512:
-        op = X86IntrinBinOp::avx512_psrl_d_512; break;
-      case llvm::Intrinsic::x86_avx512_psrl_q_512:
-        op = X86IntrinBinOp::avx512_psrl_q_512; break;
-      case llvm::Intrinsic::x86_sse2_psrli_w:
-        op = X86IntrinBinOp::sse2_psrli_w; break;
-      case llvm::Intrinsic::x86_sse2_psrli_d:
-        op = X86IntrinBinOp::sse2_psrli_d; break;
-      case llvm::Intrinsic::x86_sse2_psrli_q:
-        op = X86IntrinBinOp::sse2_psrli_q; break;
-      case llvm::Intrinsic::x86_avx2_psrli_w:
-        op = X86IntrinBinOp::avx2_psrli_w; break;
-      case llvm::Intrinsic::x86_avx2_psrli_d:
-        op = X86IntrinBinOp::avx2_psrli_d; break;
-      case llvm::Intrinsic::x86_avx2_psrli_q:
-        op = X86IntrinBinOp::avx2_psrli_q; break;
-      case llvm::Intrinsic::x86_avx512_psrli_w_512:
-        op = X86IntrinBinOp::avx512_psrli_w_512; break;
-      case llvm::Intrinsic::x86_avx512_psrli_d_512:
-        op = X86IntrinBinOp::avx512_psrli_d_512; break;
-      case llvm::Intrinsic::x86_avx512_psrli_q_512:
-        op = X86IntrinBinOp::avx512_psrli_q_512; break;
-      case llvm::Intrinsic::x86_avx2_psrlv_d:
-        op = X86IntrinBinOp::avx2_psrlv_d; break;
-      case llvm::Intrinsic::x86_avx2_psrlv_d_256:
-        op = X86IntrinBinOp::avx2_psrlv_d_256; break;
-      case llvm::Intrinsic::x86_avx2_psrlv_q:
-        op = X86IntrinBinOp::avx2_psrlv_q; break;
-      case llvm::Intrinsic::x86_avx2_psrlv_q_256:
-        op = X86IntrinBinOp::avx2_psrlv_q_256; break;
-      case llvm::Intrinsic::x86_avx512_psrlv_d_512:
-        op = X86IntrinBinOp::avx512_psrlv_d_512; break;
-      case llvm::Intrinsic::x86_avx512_psrlv_q_512:
-        op = X86IntrinBinOp::avx512_psrlv_q_512; break;
-      case llvm::Intrinsic::x86_avx512_psrlv_w_128:
-        op = X86IntrinBinOp::avx512_psrlv_w_128; break;
-      case llvm::Intrinsic::x86_avx512_psrlv_w_256:
-        op = X86IntrinBinOp::avx512_psrlv_w_256; break;
-      case llvm::Intrinsic::x86_avx512_psrlv_w_512:
-        op = X86IntrinBinOp::avx512_psrlv_w_512; break;
-      case llvm::Intrinsic::x86_sse2_psra_w:
-        op = X86IntrinBinOp::sse2_psra_w; break;
-      case llvm::Intrinsic::x86_sse2_psra_d:
-        op = X86IntrinBinOp::sse2_psra_d; break;
-      case llvm::Intrinsic::x86_avx2_psra_w:
-        op = X86IntrinBinOp::avx2_psra_w; break;
-      case llvm::Intrinsic::x86_avx2_psra_d:
-        op = X86IntrinBinOp::avx2_psra_d; break;
-      case llvm::Intrinsic::x86_avx512_psra_q_128:
-        op = X86IntrinBinOp::avx512_psra_q_128; break;
-      case llvm::Intrinsic::x86_avx512_psra_q_256:
-        op = X86IntrinBinOp::avx512_psra_q_256; break;
-      case llvm::Intrinsic::x86_avx512_psra_w_512:
-        op = X86IntrinBinOp::avx512_psra_w_512; break;
-      case llvm::Intrinsic::x86_avx512_psra_d_512:
-        op = X86IntrinBinOp::avx512_psra_d_512; break;
-      case llvm::Intrinsic::x86_avx512_psra_q_512:
-        op = X86IntrinBinOp::avx512_psra_q_512; break;
-      case llvm::Intrinsic::x86_sse2_psrai_w:
-        op = X86IntrinBinOp::sse2_psrai_w; break;
-      case llvm::Intrinsic::x86_sse2_psrai_d:
-        op = X86IntrinBinOp::sse2_psrai_d; break;
-      case llvm::Intrinsic::x86_avx2_psrai_w:
-        op = X86IntrinBinOp::avx2_psrai_w; break;
-      case llvm::Intrinsic::x86_avx2_psrai_d:
-        op = X86IntrinBinOp::avx2_psrai_d; break;
-      case llvm::Intrinsic::x86_avx512_psrai_w_512:
-        op = X86IntrinBinOp::avx512_psrai_w_512; break;
-      case llvm::Intrinsic::x86_avx512_psrai_d_512:
-        op = X86IntrinBinOp::avx512_psrai_d_512; break;
-      case llvm::Intrinsic::x86_avx512_psrai_q_128:
-        op = X86IntrinBinOp::avx512_psrai_q_128; break;
-      case llvm::Intrinsic::x86_avx512_psrai_q_256:
-        op = X86IntrinBinOp::avx512_psrai_q_256; break;
-      case llvm::Intrinsic::x86_avx512_psrai_q_512:
-        op = X86IntrinBinOp::avx512_psrai_q_512; break;
-      case llvm::Intrinsic::x86_avx2_psrav_d:
-        op = X86IntrinBinOp::avx2_psrav_d; break;
-      case llvm::Intrinsic::x86_avx2_psrav_d_256:
-        op = X86IntrinBinOp::avx2_psrav_d_256; break;
-      case llvm::Intrinsic::x86_avx512_psrav_d_512:
-        op = X86IntrinBinOp::avx512_psrav_d_512; break;
-      case llvm::Intrinsic::x86_avx512_psrav_q_128:
-        op = X86IntrinBinOp::avx512_psrav_q_128; break;
-      case llvm::Intrinsic::x86_avx512_psrav_q_256:
-        op = X86IntrinBinOp::avx512_psrav_q_256; break;
-      case llvm::Intrinsic::x86_avx512_psrav_q_512:
-        op = X86IntrinBinOp::avx512_psrav_q_512; break;
-      case llvm::Intrinsic::x86_avx512_psrav_w_128:
-        op = X86IntrinBinOp::avx512_psrav_w_128; break;
-      case llvm::Intrinsic::x86_avx512_psrav_w_256:
-        op = X86IntrinBinOp::avx512_psrav_w_256; break;
-      case llvm::Intrinsic::x86_avx512_psrav_w_512:
-        op = X86IntrinBinOp::avx512_psrav_w_512; break;
-      case llvm::Intrinsic::x86_sse2_psll_w:
-        op = X86IntrinBinOp::sse2_psll_w; break;
-      case llvm::Intrinsic::x86_sse2_psll_d:
-        op = X86IntrinBinOp::sse2_psll_d; break;
-      case llvm::Intrinsic::x86_sse2_psll_q:
-        op = X86IntrinBinOp::sse2_psll_q; break;
-      case llvm::Intrinsic::x86_avx2_psll_w:
-        op = X86IntrinBinOp::avx2_psll_w; break;
-      case llvm::Intrinsic::x86_avx2_psll_d:
-        op = X86IntrinBinOp::avx2_psll_d; break;
-      case llvm::Intrinsic::x86_avx2_psll_q:
-        op = X86IntrinBinOp::avx2_psll_q; break;
-      case llvm::Intrinsic::x86_avx512_psll_w_512:
-        op = X86IntrinBinOp::avx512_psll_w_512; break;
-      case llvm::Intrinsic::x86_avx512_psll_d_512:
-        op = X86IntrinBinOp::avx512_psll_d_512; break;
-      case llvm::Intrinsic::x86_avx512_psll_q_512:
-        op = X86IntrinBinOp::avx512_psll_q_512; break;
-      case llvm::Intrinsic::x86_sse2_pslli_w:
-        op = X86IntrinBinOp::sse2_pslli_w; break;
-      case llvm::Intrinsic::x86_sse2_pslli_d:
-        op = X86IntrinBinOp::sse2_pslli_d; break;
-      case llvm::Intrinsic::x86_sse2_pslli_q:
-        op = X86IntrinBinOp::sse2_pslli_q; break;
-      case llvm::Intrinsic::x86_avx2_pslli_w:
-        op = X86IntrinBinOp::avx2_pslli_w; break;
-      case llvm::Intrinsic::x86_avx2_pslli_d:
-        op = X86IntrinBinOp::avx2_pslli_d; break;
-      case llvm::Intrinsic::x86_avx2_pslli_q:
-        op = X86IntrinBinOp::avx2_pslli_q; break;
-      case llvm::Intrinsic::x86_avx512_pslli_w_512:
-        op = X86IntrinBinOp::avx512_pslli_w_512; break;
-      case llvm::Intrinsic::x86_avx512_pslli_d_512:
-        op = X86IntrinBinOp::avx512_pslli_d_512; break;
-      case llvm::Intrinsic::x86_avx512_pslli_q_512:
-        op = X86IntrinBinOp::avx512_pslli_q_512; break;
-      case llvm::Intrinsic::x86_avx2_psllv_d:
-        op = X86IntrinBinOp::avx2_psllv_d; break;
-      case llvm::Intrinsic::x86_avx2_psllv_d_256:
-        op = X86IntrinBinOp::avx2_psllv_d_256; break;
-      case llvm::Intrinsic::x86_avx2_psllv_q:
-        op = X86IntrinBinOp::avx2_psllv_q; break;
-      case llvm::Intrinsic::x86_avx2_psllv_q_256:
-        op = X86IntrinBinOp::avx2_psllv_q_256; break;
-      case llvm::Intrinsic::x86_avx512_psllv_d_512:
-        op = X86IntrinBinOp::avx512_psllv_d_512; break;
-      case llvm::Intrinsic::x86_avx512_psllv_q_512:
-        op = X86IntrinBinOp::avx512_psllv_q_512; break;
-      case llvm::Intrinsic::x86_avx512_psllv_w_128:
-        op = X86IntrinBinOp::avx512_psllv_w_128; break;
-      case llvm::Intrinsic::x86_avx512_psllv_w_256:
-        op = X86IntrinBinOp::avx512_psllv_w_256; break;
-      case llvm::Intrinsic::x86_avx512_psllv_w_512:
-        op = X86IntrinBinOp::avx512_psllv_w_512; break;
-      case llvm::Intrinsic::x86_ssse3_psign_b_128:
-        op = X86IntrinBinOp::ssse3_psign_b_128; break;
-      case llvm::Intrinsic::x86_ssse3_psign_w_128:
-        op = X86IntrinBinOp::ssse3_psign_w_128; break;
-      case llvm::Intrinsic::x86_ssse3_psign_d_128:
-        op = X86IntrinBinOp::ssse3_psign_d_128; break;
-      case llvm::Intrinsic::x86_avx2_psign_b:
-        op = X86IntrinBinOp::avx2_psign_b; break;
-      case llvm::Intrinsic::x86_avx2_psign_w:
-        op = X86IntrinBinOp::avx2_psign_w; break;
-      case llvm::Intrinsic::x86_avx2_psign_d:
-        op = X86IntrinBinOp::avx2_psign_d; break;
-      case llvm::Intrinsic::x86_ssse3_phadd_w_128:
-        op = X86IntrinBinOp::ssse3_phadd_w_128; break;
-      case llvm::Intrinsic::x86_ssse3_phadd_d_128:
-        op = X86IntrinBinOp::ssse3_phadd_d_128; break;
-      case llvm::Intrinsic::x86_ssse3_phadd_sw_128:
-        op = X86IntrinBinOp::ssse3_phadd_sw_128; break;
-      case llvm::Intrinsic::x86_avx2_phadd_w:
-        op = X86IntrinBinOp::avx2_phadd_w; break;
-      case llvm::Intrinsic::x86_avx2_phadd_d:
-        op = X86IntrinBinOp::avx2_phadd_d; break;
-      case llvm::Intrinsic::x86_avx2_phadd_sw:
-        op = X86IntrinBinOp::avx2_phadd_sw; break;
-      case llvm::Intrinsic::x86_ssse3_phsub_w_128:
-        op = X86IntrinBinOp::ssse3_phsub_w_128; break;
-      case llvm::Intrinsic::x86_ssse3_phsub_d_128:
-        op = X86IntrinBinOp::ssse3_phsub_d_128; break;
-      case llvm::Intrinsic::x86_ssse3_phsub_sw_128:
-        op = X86IntrinBinOp::ssse3_phsub_sw_128; break;
-      case llvm::Intrinsic::x86_avx2_phsub_w:
-        op = X86IntrinBinOp::avx2_phsub_w; break;
-      case llvm::Intrinsic::x86_avx2_phsub_d:
-        op = X86IntrinBinOp::avx2_phsub_d; break;
-      case llvm::Intrinsic::x86_avx2_phsub_sw:
-        op = X86IntrinBinOp::avx2_phsub_sw; break;
-      case llvm::Intrinsic::x86_sse2_pmulh_w:
-        op = X86IntrinBinOp::sse2_pmulh_w; break;
-      case llvm::Intrinsic::x86_avx2_pmulh_w:
-        op = X86IntrinBinOp::avx2_pmulh_w; break;
-      case llvm::Intrinsic::x86_avx512_pmulh_w_512:
-        op = X86IntrinBinOp::avx512_pmulh_w_512; break;
-      case llvm::Intrinsic::x86_sse2_pmulhu_w:
-        op = X86IntrinBinOp::sse2_pmulhu_w; break;
-      case llvm::Intrinsic::x86_avx2_pmulhu_w:
-        op = X86IntrinBinOp::avx2_pmulhu_w; break;
-      case llvm::Intrinsic::x86_avx512_pmulhu_w_512:
-        op = X86IntrinBinOp::avx512_pmulhu_w_512; break;
-      case llvm::Intrinsic::x86_sse2_pmadd_wd:
-        op = X86IntrinBinOp::sse2_pmadd_wd; break;
-      case llvm::Intrinsic::x86_avx2_pmadd_wd:
-        op = X86IntrinBinOp::avx2_pmadd_wd; break;
-      case llvm::Intrinsic::x86_avx512_pmaddw_d_512:
-        op = X86IntrinBinOp::avx512_pmaddw_d_512; break;
-      case llvm::Intrinsic::x86_ssse3_pmadd_ub_sw_128:
-        op = X86IntrinBinOp::ssse3_pmadd_ub_sw_128; break;
-      case llvm::Intrinsic::x86_avx2_pmadd_ub_sw:
-        op = X86IntrinBinOp::avx2_pmadd_ub_sw; break;
-      case llvm::Intrinsic::x86_avx512_pmaddubs_w_512:
-        op = X86IntrinBinOp::avx512_pmaddubs_w_512; break;
+#define PROCESS(NAME,A,B,C,D,E,F) \
+      case llvm::Intrinsic::NAME: \
+        op = X86IntrinBinOp::NAME; break;
+#include "ir/intrinsics.h"
+#undef PROCESS
       default: UNREACHABLE();
       }
       RETURN_IDENTIFIER(make_unique<X86IntrinBinOp>(*ty, value_name(i),
@@ -1365,7 +1143,7 @@ public:
     default:
       break;
     }
-    return visitCallInst(i, true);
+    return error(i); //visitCallInst(i, true);
   }
 
   RetTy visitExtractElementInst(llvm::ExtractElementInst &i) {
@@ -1385,7 +1163,7 @@ public:
     for (auto m : i.getShuffleMask())
       mask.push_back(m);
     RETURN_IDENTIFIER(make_unique<ShuffleVector>(*ty, value_name(i), *a, *b,
-                                                 move(mask)));
+                                                 std::move(mask)));
   }
 
   RetTy visitVAArg(llvm::VAArgInst &i) {
@@ -1436,9 +1214,9 @@ public:
                                       wrap ? BinOp::Or : BinOp::And);
 
           auto r_ptr = r.get();
-          BB->addInstr(move(l));
-          BB->addInstr(move(h));
-          BB->addInstr(move(r));
+          BB->addInstr(std::move(l));
+          BB->addInstr(std::move(h));
+          BB->addInstr(std::move(r));
 
           if (range) {
             auto range_or = make_unique<BinOp>(boolTy,
@@ -1446,7 +1224,7 @@ public:
                                                  value_name(llvm_i),
                                                *range, *r_ptr, BinOp::Or);
             range = range_or.get();
-            BB->addInstr(move(range_or));
+            BB->addInstr(std::move(range_or));
           } else {
             range = r_ptr;
           }
@@ -1457,17 +1235,26 @@ public:
         break;
       }
 
-      case LLVMContext::MD_tbaa:
-        // skip this for now
+      case LLVMContext::MD_noundef:
+        BB->addInstr(make_unique<Assume>(i, Assume::WellDefined));
         break;
 
       // non-relevant for correctness
       case LLVMContext::MD_loop:
+      case LLVMContext::MD_nosanitize:
       case LLVMContext::MD_prof:
       case LLVMContext::MD_unpredictable:
         break;
 
       default:
+        // non-relevant for correctness
+        if (ID == Node->getContext().getMDKindID("irce.loop.clone"))
+          break;
+
+        // For the target, dropping metadata is fine as metadata will never turn
+        // a incorrect function into a correct one.
+        if (!IsSrc)
+          break;
         *out << "ERROR: Unsupported metadata: " << ID << '\n';
         return false;
       }
@@ -1496,7 +1283,7 @@ public:
       case llvm::Attribute::ZExt:
         // TODO: not important for IR verification, but we should check that
         // they don't change
-        continue;
+        break;
 
       case llvm::Attribute::ByVal: {
         attrs.set(ParamAttrs::ByVal);
@@ -1506,59 +1293,63 @@ public:
 
         attrs.set(ParamAttrs::Align);
         attrs.align = max(attrs.align, DL().getABITypeAlignment(ty));
-        continue;
+        break;
       }
 
       case llvm::Attribute::NonNull:
         attrs.set(ParamAttrs::NonNull);
-        continue;
+        break;
 
       case llvm::Attribute::NoCapture:
         attrs.set(ParamAttrs::NoCapture);
-        continue;
+        break;
 
       case llvm::Attribute::ReadOnly:
-        if (!is_callsite)
-          attrs.set(ParamAttrs::NoWrite);
-        continue;
+        attrs.set(ParamAttrs::NoWrite);
+        break;
 
       case llvm::Attribute::WriteOnly:
-        if (!is_callsite)
-          attrs.set(ParamAttrs::NoRead);
-        continue;
+        attrs.set(ParamAttrs::NoRead);
+        break;
 
       case llvm::Attribute::ReadNone:
-        if (!is_callsite) {
-          // TODO: can this pointer be freed?
-          attrs.set(ParamAttrs::NoRead);
-          attrs.set(ParamAttrs::NoWrite);
-        }
-        continue;
+        // TODO: can this pointer be freed?
+        attrs.set(ParamAttrs::NoRead);
+        attrs.set(ParamAttrs::NoWrite);
+        break;
 
       case llvm::Attribute::Dereferenceable:
         attrs.set(ParamAttrs::Dereferenceable);
         attrs.derefBytes = max(attrs.derefBytes,
                                llvmattr.getDereferenceableBytes());
-        continue;
+        break;
 
       case llvm::Attribute::DereferenceableOrNull:
         attrs.set(ParamAttrs::DereferenceableOrNull);
         attrs.derefOrNullBytes = max(attrs.derefOrNullBytes,
                                      llvmattr.getDereferenceableOrNullBytes());
-        continue;
+        break;
 
       case llvm::Attribute::Alignment:
         attrs.set(ParamAttrs::Align);
         attrs.align = max(attrs.align, llvmattr.getAlignment()->value());
-        continue;
+        break;
 
       case llvm::Attribute::NoUndef:
         attrs.set(ParamAttrs::NoUndef);
-        continue;
+        break;
 
       case llvm::Attribute::Returned:
         attrs.set(ParamAttrs::Returned);
-        continue;
+        break;
+
+      case llvm::Attribute::AllocatedPointer:
+        attrs.set(ParamAttrs::AllocPtr);
+        break;
+
+      case llvm::Attribute::AllocAlign:
+        attrs.set(ParamAttrs::AllocAlign);
+        break;
 
       default:
         // If it is call site, it should be added at approximation list
@@ -1594,8 +1385,7 @@ public:
 
       case llvm::Attribute::Alignment:
         attrs.set(FnAttrs::Align);
-        attrs.align = max(attrs.align,
-                          (unsigned)llvmattr.getAlignment()->value());
+        attrs.align = max(attrs.align, llvmattr.getAlignment()->value());
         break;
 
       default: break;
@@ -1603,8 +1393,39 @@ public:
     }
   }
 
+  static FPDenormalAttrs::Type parse_fp_denormal_str(string_view str) {
+    if (str == "ieee")          return FPDenormalAttrs::IEEE;
+    if (str == "preserve-sign") return FPDenormalAttrs::PreserveSign;
+    if (str == "positive-zero") return FPDenormalAttrs::PositiveZero;
+    UNREACHABLE();
+  }
+
+  static FPDenormalAttrs parse_fp_denormal(string_view str) {
+    FPDenormalAttrs attr;
+    auto comma = str.find(',');
+    if (comma == string_view::npos) {
+      attr.input = attr.output = parse_fp_denormal_str(str);
+    } else {
+      attr.output = parse_fp_denormal_str(string_view(str.data(), comma));
+      attr.input  = parse_fp_denormal_str(str.data() + comma + 1);
+    }
+    return attr;
+  }
+
   void handleFnAttrs(const llvm::AttributeSet &aset, FnAttrs &attrs) {
     for (const llvm::Attribute &llvmattr : aset) {
+      if (llvmattr.isStringAttribute()) {
+        auto str = llvmattr.getKindAsString();
+        auto val = llvmattr.getValueAsString();
+        if (str == "denormal-fp-math") {
+          attrs.setFPDenormal(parse_fp_denormal(val));
+        } else if (str == "denormal-fp-math-f32") {
+          attrs.setFPDenormal(parse_fp_denormal(val), 32);
+        } else if (str == "alloc-family") {
+          attrs.allocfamily = val;
+        }
+      }
+
       if (!llvmattr.isEnumAttribute() && !llvmattr.isIntAttribute() &&
           !llvmattr.isTypeAttribute())
         continue;
@@ -1637,6 +1458,31 @@ public:
         attrs.set(FnAttrs::NoFree);
         break;
 
+      case llvm::Attribute::AllocSize: {
+        attrs.set(FnAttrs::AllocSize);
+        auto args = llvmattr.getAllocSizeArgs();
+        attrs.allocsize_0 = args.first;
+        if (args.second)
+          attrs.allocsize_1 = *args.second;
+        break;
+      }
+      case llvm::Attribute::AllocKind: {
+        auto kind = llvmattr.getAllocKind();
+        if ((kind & llvm::AllocFnKind::Alloc) != llvm::AllocFnKind::Unknown)
+          attrs.add(AllocKind::Alloc);
+        if ((kind & llvm::AllocFnKind::Realloc) != llvm::AllocFnKind::Unknown)
+          attrs.add(AllocKind::Realloc);
+        if ((kind & llvm::AllocFnKind::Free) != llvm::AllocFnKind::Unknown)
+          attrs.add(AllocKind::Free);
+        if ((kind & llvm::AllocFnKind::Uninitialized)
+              != llvm::AllocFnKind::Unknown)
+          attrs.add(AllocKind::Uninitialized);
+        if ((kind & llvm::AllocFnKind::Zeroed) != llvm::AllocFnKind::Unknown)
+          attrs.add(AllocKind::Zeroed);
+        if ((kind & llvm::AllocFnKind::Aligned) != llvm::AllocFnKind::Unknown)
+          attrs.add(AllocKind::Aligned);
+        break;
+      }
       case llvm::Attribute::NoReturn:
         attrs.set(FnAttrs::NoReturn);
         break;
@@ -1645,10 +1491,28 @@ public:
         attrs.set(FnAttrs::WillReturn);
         break;
 
+      case llvm::Attribute::NullPointerIsValid:
+        attrs.set(FnAttrs::NullPointerIsValid);
+        break;
+
       default:
         break;
       }
     }
+  }
+
+  void parse_fn_attrs(const llvm::CallInst &i, FnAttrs &attrs) {
+    auto fn = i.getCalledFunction();
+    llvm::AttributeList attrs_callsite = i.getAttributes();
+    llvm::AttributeList attrs_fndef = fn ? fn->getAttributes()
+                                          : llvm::AttributeList();
+    auto ret = llvm::AttributeList::ReturnIndex;
+    auto fnidx = llvm::AttributeList::FunctionIndex;
+
+    handleRetAttrs(attrs_callsite.getAttributes(ret), attrs);
+    handleRetAttrs(attrs_fndef.getAttributes(ret), attrs);
+    handleFnAttrs(attrs_callsite.getAttributes(fnidx), attrs);
+    handleFnAttrs(attrs_fndef.getAttributes(fnidx), attrs);
   }
 
 
@@ -1673,6 +1537,8 @@ public:
                 f.isVarArg());
     reset_state(Fn);
 
+    auto &attrs = Fn.getFnAttrs();
+    vector<ParamAttrs> param_attrs;
     llvm::AttributeList attrlist = f.getAttributes();
 
     for (unsigned idx = 0; idx < f.arg_size(); ++idx) {
@@ -1684,7 +1550,7 @@ public:
       ParamAttrs attrs;
       if (!ty || !handleParamAttrs(argattr, attrs, false))
         return {};
-      auto val = make_unique<Input>(*ty, value_name(arg), move(attrs));
+      auto val = make_unique<Input>(*ty, value_name(arg), std::move(attrs));
       add_identifier(arg, *val.get());
 
       if (arg.hasReturnedAttr()) {
@@ -1692,10 +1558,24 @@ public:
         assert(Fn.getReturnedInput() == nullptr);
         Fn.setReturnedInput(val.get());
       }
-      Fn.addInput(move(val));
+      Fn.addInput(std::move(val));
     }
+    {
+      vector<Value*> args;
+      for (auto &in : Fn.getInputs()) {
+        args.emplace_back(const_cast<Value*>(&in));
+      }
+      vector<ParamAttrs> param_attrs;
+      (void)llvm_implict_attrs(f, TLI, attrs, param_attrs, args);
 
-    auto &attrs = Fn.getFnAttrs();
+      // merge param attrs computed above
+      unsigned idx = 0;
+      for (auto *in : args) {
+        if (idx == param_attrs.size())
+          break;
+        static_cast<Input*>(in)->merge(param_attrs[idx++]);
+      }
+    }
     const auto &ridx = llvm::AttributeList::ReturnIndex;
     const auto &fnidx = llvm::AttributeList::FunctionIndex;
     handleRetAttrs(attrlist.getAttributes(ridx), attrs);
@@ -1735,7 +1615,7 @@ public:
       for (auto &i : *llvm_bb) {
         if (auto I = visit(i)) {
           auto alive_i = I.get();
-          BB->addInstr(move(I));
+          BB->addInstr(std::move(I));
 
           if (i.hasMetadataOtherThanDebugLoc() &&
               !handleMetadata(i, *alive_i))
@@ -1746,13 +1626,17 @@ public:
     }
 
     // patch phi nodes for recursive defs
-    for (auto &[phi, llvm_i, idx] : todo_phis) {
-      auto op = get_operand(llvm_i->getIncomingValue(idx));
-      if (!op) {
-        error(*llvm_i);
-        return {};
+    for (auto &[phi, i] : todo_phis) {
+      insert_constexpr_before = phi;
+      BB = const_cast<BasicBlock*>(&Fn.bbOf(*phi));
+      for (unsigned idx = 0, e = i->getNumIncomingValues(); idx != e; ++idx) {
+        if (auto op = get_operand(i->getIncomingValue(idx))) {
+          phi->addValue(*op, value_name(*i->getIncomingBlock(idx)));
+        } else {
+          error(*i);
+          return {};
+        }
       }
-      phi->addValue(*op, value_name(*llvm_i->getIncomingBlock(idx)));
     }
 
     auto getGlobalVariable =
@@ -1781,16 +1665,12 @@ public:
     // If there is a global variable with initializer, put them at init block.
     auto &entry_name = Fn.getFirstBB().getName();
     BB = &Fn.getBB("#init", true);
+    insert_constexpr_before = nullptr;
 
+    // Ensure all src globals exist in target as well
     for (auto &gvname : gvnamesInSrc) {
-      auto gv = getGlobalVariable(string(gvname));
-      if (!gv) {
-        // global variable removed or renamed
-        *out << "ERROR: Unsupported interprocedural transformation\n";
-        return {};
-      }
-      // If gvname already exists in tgt, get_operand will immediately return
-      get_operand(gv);
+      if (auto gv = getGlobalVariable(string(gvname)))
+        get_operand(gv);
     }
 
     map<string, unique_ptr<Store>> stores;
@@ -1817,14 +1697,14 @@ public:
 
     for (auto &itm : stores)
       // Insert stores in lexicographical order of global var's names
-      BB->addInstr(move(itm.second));
+      BB->addInstr(std::move(itm.second));
 
     if (BB->empty())
       Fn.removeBB(*BB);
     else
       BB->addInstr(make_unique<Branch>(Fn.getBB(entry_name)));
 
-    return move(Fn);
+    return Fn;
   }
 };
 }
@@ -1837,8 +1717,8 @@ initializer::initializer(ostream &os, const llvm::DataLayout &DL) {
 
 optional<IR::Function> llvm2alive(llvm::Function &F,
                                   const llvm::TargetLibraryInfo &TLI,
+                                  bool IsSrc,
                                   const vector<string_view> &gvnamesInSrc) {
-  return llvm2alive_(F, TLI, gvnamesInSrc).run();
+  return llvm2alive_(F, TLI, IsSrc, gvnamesInSrc).run();
 }
-
 }

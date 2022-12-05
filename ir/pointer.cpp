@@ -15,7 +15,7 @@ using namespace util;
 static unsigned ptr_next_idx;
 
 static expr prepend_if(const expr &pre, expr &&e, bool prepend) {
-  return prepend ? pre.concat(e) : move(e);
+  return prepend ? pre.concat(e) : std::move(e);
 }
 
 static string local_name(const State *s, const char *name) {
@@ -72,7 +72,7 @@ Pointer::Pointer(const Memory &m, const char *var_name, const expr &local,
   assert(!local.isValid() || p.bits() == totalBits());
 }
 
-Pointer::Pointer(const Memory &m, expr repr) : m(m), p(move(repr)) {
+Pointer::Pointer(const Memory &m, expr repr) : m(m), p(std::move(repr)) {
   assert(!p.isValid() || p.bits() == totalBits());
 }
 
@@ -170,7 +170,7 @@ expr Pointer::isConstGlobal() const {
   auto generic = bid.uge(has_null_block) &&
                  expr(num_consts_src > 0) &&
                  bid.ule(num_consts_src + has_null_block - 1);
-  auto tgt = bid.uge(num_nonlocals_src) && bid.ule(num_nonlocals - 1);
+  auto tgt = num_nonlocals_src == 0 ? expr(true) : bid.ugt(num_nonlocals_src-1);
   return !isLocal() && (generic || tgt);
 }
 
@@ -241,7 +241,7 @@ expr Pointer::getAddress(bool simplify) const {
     expr lc = hasLocalBit() ? expr::mkUInt(1, 1).concat(*local) : *local;
     addr = expr::mkIf(isLocal(), lc, non_local);
   } else
-    addr = move(non_local);
+    addr = std::move(non_local);
 
   return addr + getOffset().zextOrTrunc(bits_ptr_address);
 }
@@ -300,16 +300,16 @@ expr Pointer::inbounds(bool simplify_ptr, bool strict) {
     expr inb = ::inbounds(Pointer(m, ptr_expr), strict);
     if (!inb.isFalse())
       all_ptrs.add(ptr_expr, domain);
-    ret.add(move(inb), domain);
+    ret.add(std::move(inb), domain);
   }
 
   // trim set of valid ptrs
-  if (auto ptrs = all_ptrs())
+  if (auto ptrs = std::move(all_ptrs)())
     p = *ptrs;
   else
     p = expr::mkUInt(0, totalBits());
 
-  return *ret();
+  return *std::move(ret)();
 }
 
 expr Pointer::blockAlignment() const {
@@ -327,7 +327,7 @@ expr Pointer::isBlockAligned(uint64_t align, bool exact) const {
 }
 
 expr Pointer::isAligned(uint64_t align) {
-  if (align == 1)
+  if (align <= 1)
     return true;
 
   auto offset = getOffset();
@@ -348,7 +348,7 @@ expr Pointer::isAligned(uint64_t align) {
                  .concat(zero);
     if (bits_for_ptrattrs)
       newp = newp.concat(getAttrs());
-    p = move(newp);
+    p = std::move(newp);
     assert(!p.isValid() || p.bits() == totalBits());
     return { blk_align && offset.extract(bits - 1, 0) == zero };
   }
@@ -359,7 +359,8 @@ expr Pointer::isAligned(uint64_t align) {
 static pair<expr, expr> is_dereferenceable(Pointer &p,
                                            const expr &bytes_off,
                                            const expr &bytes,
-                                           uint64_t align, bool iswrite) {
+                                           uint64_t align, bool iswrite,
+                                           bool ignore_accessability) {
   expr block_sz = p.blockSizeOffsetT();
   expr offset = p.getOffset();
 
@@ -371,10 +372,12 @@ static pair<expr, expr> is_dereferenceable(Pointer &p,
 
   cond &= p.isBlockAlive();
 
-  if (iswrite)
-    cond &= p.isWritable() && !p.isNoWrite();
-  else
-    cond &= !p.isNoRead();
+  if (!ignore_accessability) {
+    if (iswrite)
+      cond &= p.isWritable() && !p.isNoWrite();
+    else
+      cond &= !p.isNoRead();
+  }
 
   // try some constant folding; these are implied by the conditions above
   if (bytes.ugt(p.blockSize()).isTrue() ||
@@ -382,12 +385,12 @@ static pair<expr, expr> is_dereferenceable(Pointer &p,
       isUndef(offset))
     cond = false;
 
-  return { move(cond), p.isAligned(align) };
+  return { std::move(cond), p.isAligned(align) };
 }
 
 // When bytes is 0, pointer is always derefenceable
 AndExpr Pointer::isDereferenceable(const expr &bytes0, uint64_t align,
-                                   bool iswrite) {
+                                   bool iswrite, bool ignore_accessability) {
   expr bytes_off = bytes0.zextOrTrunc(bits_for_offset);
   expr bytes = bytes0.zextOrTrunc(bits_size_t);
   DisjointExpr<expr> UB(expr(false)), is_aligned(expr(false)), all_ptrs;
@@ -395,28 +398,28 @@ AndExpr Pointer::isDereferenceable(const expr &bytes0, uint64_t align,
   for (auto &[ptr_expr, domain] : DisjointExpr<expr>(p, 3)) {
     Pointer ptr(m, ptr_expr);
     auto [ub, aligned] = ::is_dereferenceable(ptr, bytes_off, bytes, align,
-                                              iswrite);
+                                              iswrite, ignore_accessability);
 
     // record pointer if not definitely unfeasible
     if (!ub.isFalse() && !aligned.isFalse() && !ptr.blockSize().isZero())
       all_ptrs.add(ptr.release(), domain);
 
-    UB.add(move(ub), domain);
-    is_aligned.add(move(aligned), domain);
+    UB.add(std::move(ub), domain);
+    is_aligned.add(std::move(aligned), domain);
   }
 
   AndExpr exprs;
-  exprs.add(bytes == 0 || *UB());
+  exprs.add(bytes == 0 || *std::move(UB)());
 
   // cannot store more bytes than address space
   if (bytes0.bits() > bits_size_t)
     exprs.add(bytes0.extract(bytes0.bits() - 1, bits_size_t) == 0);
 
   // address must be always aligned regardless of access size
-  exprs.add(*is_aligned());
+  exprs.add(*std::move(is_aligned)());
 
   // trim set of valid ptrs
-  if (auto ptrs = all_ptrs())
+  if (auto ptrs = std::move(all_ptrs)())
     p = *ptrs;
   else
     p = expr::mkUInt(0, totalBits());
@@ -425,8 +428,9 @@ AndExpr Pointer::isDereferenceable(const expr &bytes0, uint64_t align,
 }
 
 AndExpr Pointer::isDereferenceable(uint64_t bytes, uint64_t align,
-                                   bool iswrite) {
-  return isDereferenceable(expr::mkUInt(bytes, bits_size_t), align, iswrite);
+                                   bool iswrite, bool ignore_accessability) {
+  return isDereferenceable(expr::mkUInt(bytes, bits_size_t), align, iswrite,
+                           ignore_accessability);
 }
 
 // This function assumes that both begin + len don't overflow
@@ -443,7 +447,7 @@ void Pointer::isDisjointOrEqual(const expr &len1, const Pointer &ptr2,
 
 expr Pointer::isBlockAlive() const {
   // NULL block is dead
-  if (has_null_block && getBid().isZero())
+  if (has_null_block && !null_is_dereferenceable & getBid().isZero())
     return false;
 
   auto bid = getShortBid();
@@ -472,7 +476,8 @@ expr Pointer::isHeapAllocated() const {
 
 expr Pointer::refined(const Pointer &other) const {
   // This refers to a block that was malloc'ed within the function
-  expr local = getAllocType() == other.getAllocType();
+  expr local = other.isLocal();
+  local &= getAllocType() == other.getAllocType();
   local &= blockSize() == other.blockSize();
   local &= getOffset() == other.getOffset();
   // Attributes are ignored at refinement.
@@ -481,7 +486,7 @@ expr Pointer::refined(const Pointer &other) const {
   //local &= block_refined(other);
 
   return expr::mkIf(isNull(), other.isNull(),
-                    expr::mkIf(isLocal(), move(local), *this == other) &&
+                    expr::mkIf(isLocal(), std::move(local), *this == other) &&
                       isBlockAlive().implies(other.isBlockAlive()));
 }
 
@@ -527,6 +532,8 @@ expr Pointer::isWritable() const {
         (num_consts_src ? bid.ugt(has_null_block + num_consts_src - 1) : true);
   if (m.numNonlocals() > num_nonlocals_src)
     non_local &= bid.ult(num_nonlocals_src);
+  if (has_null_block && null_is_dereferenceable)
+    non_local |= bid == 0;
   return isLocal() || non_local;
 }
 
@@ -564,7 +571,6 @@ expr Pointer::isNoWrite() const {
 }
 
 Pointer Pointer::mkNullPointer(const Memory &m) {
-  // Null pointer exists if either source or target uses it.
   assert(has_null_block);
   // A null pointer points to block 0 without any attribute.
   return { m, 0, false };

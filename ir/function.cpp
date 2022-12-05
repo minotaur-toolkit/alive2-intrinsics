@@ -32,9 +32,9 @@ void BasicBlock::fixupTypes(const Model &m) {
 
 void BasicBlock::addInstr(unique_ptr<Instr> &&i, bool push_front) {
   if (push_front)
-    m_instrs.emplace(m_instrs.begin(), move(i));
+    m_instrs.emplace(m_instrs.begin(), std::move(i));
   else
-    m_instrs.emplace_back(move(i));
+    m_instrs.emplace_back(std::move(i));
 }
 
 void BasicBlock::addInstrAt(unique_ptr<Instr> &&i, const Instr *other,
@@ -44,7 +44,7 @@ void BasicBlock::addInstrAt(unique_ptr<Instr> &&i, const Instr *other,
     if (I->get() == other) {
       if (!before)
         ++I;
-      m_instrs.emplace(I, move(i));
+      m_instrs.emplace(I, std::move(i));
       break;
     }
   }
@@ -83,10 +83,11 @@ void BasicBlock::replaceTargetWith(const BasicBlock *from,
   }
 }
 
-unique_ptr<BasicBlock> BasicBlock::dup(const string &suffix) const {
+unique_ptr<BasicBlock>
+BasicBlock::dup(Function &f, const string &suffix) const {
   auto newbb = make_unique<BasicBlock>(name + suffix);
   for (auto &i : instrs()) {
-    newbb->addInstr(i.dup(suffix));
+    newbb->addInstr(i.dup(f, suffix));
   }
   return newbb;
 }
@@ -161,6 +162,16 @@ const BasicBlock& Function::bbOf(const Instr &i) const {
   UNREACHABLE();
 }
 
+BasicBlock& Function::insertBBAfter(string_view name, const BasicBlock &bb) {
+  auto p = BBs.try_emplace(string(name), name);
+  if (p.second) {
+    auto I = find(BB_order.begin(), BB_order.end(), &bb);
+    assert(I != BB_order.end());
+    BB_order.insert(next(I), &p.first->second);
+  }
+  return p.first->second;
+}
+
 void Function::removeBB(BasicBlock &BB) {
   assert(BB.getName() != "#sink");
   BBs.erase(BB.getName());
@@ -174,7 +185,7 @@ void Function::removeBB(BasicBlock &BB) {
 }
 
 void Function::addConstant(unique_ptr<Value> &&c) {
-  constants.emplace_back(move(c));
+  constants.emplace_back(std::move(c));
 }
 
 vector<GlobalVariable *> Function::getGlobalVars() const {
@@ -195,48 +206,21 @@ vector<string_view> Function::getGlobalVarNames() const {
 }
 
 void Function::addPredicate(unique_ptr<Predicate> &&p) {
-  predicates.emplace_back(move(p));
+  predicates.emplace_back(std::move(p));
 }
 
 void Function::addUndef(unique_ptr<UndefValue> &&u) {
-  undefs.emplace_back(move(u));
+  undefs.emplace_back(std::move(u));
 }
 
 void Function::addAggregate(unique_ptr<AggregateValue> &&a) {
-  aggregates.emplace_back(move(a));
+  aggregates.emplace_back(std::move(a));
 }
 
 void Function::addInput(unique_ptr<Value> &&i) {
   assert(dynamic_cast<Input *>(i.get()) ||
          dynamic_cast<ConstantInput*>(i.get()));
-  inputs.emplace_back(move(i));
-}
-
-bool Function::hasSameInputs(const Function &rhs) const {
-  auto litr = inputs.begin(), lend = inputs.end();
-  auto ritr = rhs.inputs.begin(), rend = rhs.inputs.end();
-
-  auto skip_constinputs = [&]() {
-    while (litr != lend && dynamic_cast<ConstantInput *>((*litr).get()))
-      litr++;
-    while (ritr != rend && dynamic_cast<ConstantInput *>((*ritr).get()))
-      ritr++;
-  };
-
-  skip_constinputs();
-
-  while (litr != lend && ritr != rend) {
-    auto *lv = dynamic_cast<Input *>((*litr).get());
-    auto *rv = dynamic_cast<Input *>((*ritr).get());
-    if (lv->getType().toString() != rv->getType().toString())
-      return false;
-
-    ++litr;
-    ++ritr;
-    skip_constinputs();
-  }
-
-  return litr == lend && ritr == rend;
+  inputs.emplace_back(std::move(i));
 }
 
 bool Function::hasReturn() const {
@@ -267,7 +251,7 @@ void Function::syncDataWithSrc(const Function &src) {
 Function::instr_iterator::
 instr_iterator(vector<BasicBlock*>::const_iterator &&BBI,
                vector<BasicBlock*>::const_iterator &&BBE)
-  : BBI(move(BBI)), BBE(move(BBE)) {
+  : BBI(std::move(BBI)), BBE(std::move(BBE)) {
   next_bb();
 }
 
@@ -287,25 +271,31 @@ void Function::instr_iterator::operator++(void) {
   next_bb();
 }
 
+static void add_users(Function::UsersTy &users, Value *i, BasicBlock *bb,
+                      Value *val) {
+  if (auto *agg = dynamic_cast<AggregateValue*>(val)) {
+    for (auto elem : agg->getVals()) {
+      add_users(users, i, bb, elem);
+    }
+  }
+  users[val].emplace(i, bb);
+}
+
 Function::UsersTy Function::getUsers() const {
   UsersTy users;
   for (auto *bb : getBBs()) {
     for (auto &i : bb->instrs()) {
       for (auto op : i.operands()) {
-        users[op].emplace(const_cast<Instr*>(&i), bb);
+        add_users(users, const_cast<Instr*>(&i), bb, op);
       }
     }
   }
   for (auto &agg : aggregates) {
-    for (auto val : agg->getVals()) {
-      users[val].emplace(agg.get(), nullptr);
-    }
+    add_users(users, agg.get(), nullptr, agg.get());
   }
   for (auto &c : constants) {
     if (auto agg = dynamic_cast<AggregateValue*>(c.get())) {
-      for (auto val : agg->getVals()) {
-        users[val].emplace(agg, nullptr);
-      }
+      add_users(users, agg, nullptr, agg);
     }
   }
   return users;
@@ -376,6 +366,39 @@ void Function::topSort() {
   BB_order = top_sort(BB_order);
 }
 
+static void
+rauw_op(const unordered_map<const Value*,
+                            vector<pair<BasicBlock*, Value*>>> &vmap,
+        const unordered_set<const Value *> &phis_from_orig_bb,
+        Value *i, Value *op) {
+  auto it = vmap.find(op);
+  if (it != vmap.end()) {
+    // consider this case:
+    //   loop:
+    //     %op = phi ...
+    //     %k  = phi [%op, %loop], ...
+    //
+    // In iteration i, %k should point to iteration (i-1)'s %k.
+    // If is_phi_to_phi is true, %op is the phi in this block.
+    bool is_phi_to_phi = dynamic_cast<const Phi *>(i) &&
+                         phis_from_orig_bb.count(op);
+    if (is_phi_to_phi) {
+      if (it->second.size() >= 2) {
+        i->rauw(*op, *it->second[it->second.size()-2].second);
+      }
+    } else {
+      i->rauw(*op, *it->second.back().second);
+    }
+    return;
+  }
+
+  if (auto *agg = dynamic_cast<AggregateValue*>(op)) {
+    for (auto &v : agg->getVals()) {
+      rauw_op(vmap, phis_from_orig_bb, op, v);
+    }
+  }
+}
+
 static BasicBlock&
 cloneBB(Function &F, const BasicBlock &BB, const char *suffix,
         const unordered_map<const BasicBlock*, vector<BasicBlock*>> &bbmap,
@@ -388,31 +411,13 @@ cloneBB(Function &F, const BasicBlock &BB, const char *suffix,
     if (dynamic_cast<const Phi *>(&i))
       phis_from_orig_bb.insert(&i);
 
-    auto d = i.dup(suffix);
+    auto d = i.dup(F, suffix);
     for (auto &op : d->operands()) {
-      auto it = vmap.find(op);
-      if (it != vmap.end()) {
-        // consider this case:
-        //   loop:
-        //     %op = phi ...
-        //     %k  = phi [%op, %loop], ...
-        //
-        // In iteration i, %k should point to iteration (i-1)'s %k.
-        // If is_phi_to_phi is true, %op is the phi in this block.
-        bool is_phi_to_phi = dynamic_cast<const Phi *>(&i) &&
-                             phis_from_orig_bb.count(op);
-        if (is_phi_to_phi) {
-          if (it->second.size() >= 2) {
-            d->rauw(*op, *it->second[it->second.size()-2].second);
-          }
-        } else {
-          d->rauw(*op, *it->second.back().second);
-        }
-      }
+      rauw_op(vmap, phis_from_orig_bb, d.get(), op);
     }
     if (!i.isVoid())
       vmap[&i].emplace_back(&newbb, d.get());
-    newbb.addInstr(move(d));
+    newbb.addInstr(std::move(d));
   }
 
   for (auto *phi : newbb.phis()) {
@@ -655,9 +660,9 @@ void Function::unroll(unsigned k) {
           auto &newphi = new_phis[make_pair(dst, val)];
           if (!newphi) {
             auto name = val->getName() + "#phi#" + to_string(phi_counter++);
-            auto phi = make_unique<Phi>(val->getType(), move(name));
+            auto phi = make_unique<Phi>(val->getType(), std::move(name));
             newphi = phi.get();
-            dst->addInstr(move(phi), true);
+            dst->addInstr(std::move(phi), true);
           }
 
           // we may have multiple edges from the loop into this BB
@@ -676,16 +681,14 @@ void Function::unroll(unsigned k) {
             }
           }
 
-          auto *i = dynamic_cast<Instr*>(user);
-          assert(i);
-          if (auto phi = dynamic_cast<Phi*>(i)) {
+          if (auto phi = dynamic_cast<Phi*>(user)) {
             for (auto &[pv, pred] : phi->getValues()) {
               if (pv == val && dom_tree.dominates(dst, &getBB(pred))){
                 phi->replace(pred, *newphi);
               }
             }
-          } else {
-            i->rauw(*val, *newphi);
+          } else if (dynamic_cast<Instr*>(user)) {
+            user->rauw(*val, *newphi);
             added_phis.emplace(dst, newphi);
             if (!first_added_phi)
               first_added_phi = newphi;
@@ -701,7 +704,7 @@ void Function::unroll(unsigned k) {
           auto size_alloc
             = make_unique<IntConst>(i32, Memory::getStoreByteSize(type));
           auto *size = size_alloc.get();
-          addConstant(move(size_alloc));
+          addConstant(std::move(size_alloc));
 
           unsigned align = 16;
           auto name = val->getName() + "#ptr#" + to_string(phi_counter++);
@@ -723,9 +726,9 @@ void Function::unroll(unsigned k) {
             = make_unique<Load>(type, name + "#load", *alloca.get(), align);
           auto *i = static_cast<Instr*>(user);
           i->rauw(*first_added_phi, *load.get());
-          user_bb->addInstrAt(move(load), i, true);
+          user_bb->addInstrAt(std::move(load), i, true);
 
-          getFirstBB().addInstr(move(alloca), true);
+          getFirstBB().addInstr(std::move(alloca), true);
         }
       }
     }
@@ -833,7 +836,7 @@ void CFG::edge_iterator::next() {
 
 CFG::edge_iterator::edge_iterator(vector<BasicBlock*>::iterator &&it,
                                   vector<BasicBlock*>::iterator &&end)
-  : bbi(move(it)), bbe(move(end)) {
+  : bbi(std::move(it)), bbe(std::move(end)) {
   next();
 }
 

@@ -19,10 +19,10 @@ if (MSVC)
   set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "/O2 /Oi /Zi ${CMAKE_CXX_FLAGS_RELWITHDEBINFO}")
   set(CMAKE_EXE_LINKER_FLAGS         "/LTCG:INCREMENTAL ${CMAKE_EXE_LINKER_FLAGS}")
 else()
-  if(BUILD_INTRINSIC_TESTER)
-    set(CMAKE_CXX_FLAGS              "-Wall -Werror -march=native -mavx512f -mavx512bw -mavx512vl -fPIC -Wno-ignored-attributes ${CMAKE_CXX_FLAGS}")
+  if (BUILD_INTRINSIC_TESTER)
+    set(CMAKE_CXX_FLAGS              "-Wall -Werror -march=native -mavx512f -mavx512bw -mavx512vl -fPIC -fstrict-enums -Wno-ignored-attributes ${CMAKE_CXX_FLAGS}")
   else()
-    set(CMAKE_CXX_FLAGS              "-Wall -Werror -march=native -fPIC -Wno-ignored-attributes ${CMAKE_CXX_FLAGS}")
+    set(CMAKE_CXX_FLAGS              "-Wall -Werror -march=native -fPIC -fstrict-enums -Wno-ignored-attributes ${CMAKE_CXX_FLAGS}")
   endif()
   set(CMAKE_CXX_FLAGS_DEBUG          "-g -Og ${CMAKE_CXX_FLAGS_DEBUG}")
   set(CMAKE_CXX_FLAGS_RELEASE        "-O3 ${CMAKE_CXX_FLAGS_RELEASE}")
@@ -129,9 +129,9 @@ add_library(tools STATIC ${TOOLS_SRCS})
 
 set(UTIL_SRCS
   "${PROJECT_BINARY_DIR}/version_gen.h"
-  util/version.cpp
   util/compiler.cpp
   util/config.cpp
+  util/crc.cpp
   util/errors.cpp
   util/file.cpp
   util/parallel.cpp
@@ -143,12 +143,27 @@ set(UTIL_SRCS
   util/stopwatch.cpp
   util/symexec.cpp
   util/unionfind.cpp
+  util/version.cpp
 )
 
 add_library(util STATIC ${UTIL_SRCS})
 add_dependencies(util generate_version)
 
 set(ALIVE_LIBS ir smt tools util)
+
+find_package(hiredis)
+if (HIREDIS_LIBRARIES)
+  include_directories(${HIREDIS_INCLUDE_DIR})
+
+  set(CACHE_SRCS
+    cache/cache.cpp
+  )
+  add_library(cache STATIC ${CACHE_SRCS})
+  set(ALIVE_LIBS cache ${ALIVE_LIBS})
+else()
+  set(HIREDIS_LIBRARIES $<0:''>)
+  add_compile_definitions(NO_REDIS_SUPPORT)
+endif()
 
 
 if (BUILD_LLVM_UTILS OR BUILD_TV)
@@ -173,6 +188,7 @@ if (BUILD_LLVM_UTILS OR BUILD_TV)
 
   set(LLVM_UTIL_SRCS
     "llvm_util/known_fns.cpp"
+    "llvm_util/llvm_optimizer.cpp"
     "llvm_util/llvm2alive.cpp"
     "llvm_util/utils.cpp"
   )
@@ -181,10 +197,9 @@ if (BUILD_LLVM_UTILS OR BUILD_TV)
     intrinsics_tester/x86Intrin.cpp
     intrinsics_tester/compareFunctions.cpp
   )
-  
-  add_library(tester STATIC ${INTRINSICS_TESTER_SRCS})
+
   add_library(llvm_util STATIC ${LLVM_UTIL_SRCS})
-  set(ALIVE_LIBS_LLVM llvm_util tester ${ALIVE_LIBS})
+  set(ALIVE_LIBS_LLVM llvm_util ${ALIVE_LIBS})
 
   add_llvm_executable(alive-tv
     "tools/alive-tv.cpp"
@@ -195,8 +210,11 @@ if (BUILD_LLVM_UTILS OR BUILD_TV)
   )
 
   if (BUILD_INTRINSIC_TESTER)
+    add_library(tester STATIC ${INTRINSICS_TESTER_SRCS})
+    set(ALIVE_LIBS_LLVM tester ${ALIVE_LIBS_LLVM})
+
     add_llvm_executable(intrinsics-tester
-      "intrinsics_tester/intrinsics-tester.cpp"  
+      "intrinsics_tester/intrinsics-tester.cpp"
   )
   endif()
 
@@ -243,30 +261,15 @@ add_executable(alive-jobserver
 if (BUILD_LLVM_UTILS OR BUILD_TV)
   llvm_map_components_to_libnames(llvm_libs ExecutionEngine orcjit support core irreader analysis passes transformutils native target jitlink)
 #  target_link_libraries(alive2 PRIVATE ${llvm_libs})
-  target_link_libraries(alive-tv PRIVATE ${ALIVE_LIBS_LLVM} ${llvm_libs})
-  target_link_libraries(alive-exec PRIVATE ${ALIVE_LIBS_LLVM} ${llvm_libs})
+  target_link_libraries(alive-tv PRIVATE ${ALIVE_LIBS_LLVM} ${Z3_LIBRARIES} ${HIREDIS_LIBRARIES} ${llvm_libs})
+  target_link_libraries(alive-exec PRIVATE ${ALIVE_LIBS_LLVM} ${Z3_LIBRARIES} ${HIREDIS_LIBRARIES} ${llvm_libs})
   if (BUILD_INTRINSIC_TESTER)
-    target_link_libraries(intrinsics-tester PRIVATE ${ALIVE_LIBS_LLVM} ${llvm_libs})
+    target_link_libraries(intrinsics-tester PRIVATE ${ALIVE_LIBS_LLVM} ${Z3_LIBRARIES} ${HIREDIS_LIBRARIES} ${llvm_libs})
   endif()
 endif()
 
-if (CYGWIN)
-  # cmake on cygwin doesn't seem to know about dlls..
-  get_filename_component(Z3_LIB_DIR "${Z3_LIBRARIES}" DIRECTORY)
-  set(CMAKE_EXE_LINKER_FLAGS "-L${Z3_LIB_DIR} -lz3")
-  set(CMAKE_SHARED_LINKER_FLAGS "-L${Z3_LIB_DIR} -lz3")
-  file(COPY "${Z3_LIBRARIES}" DESTINATION "${PROJECT_BINARY_DIR}")
-else()
-  target_link_libraries(alive PRIVATE ${Z3_LIBRARIES})
-  #target_link_libraries(alive2 PRIVATE ${Z3_LIBRARIES})
-  if (BUILD_LLVM_UTILS OR BUILD_TV)
-    target_link_libraries(alive-tv PRIVATE ${Z3_LIBRARIES})
-    target_link_libraries(alive-exec PRIVATE ${Z3_LIBRARIES})
-    if (BUILD_INTRINSIC_TESTER)
-      target_link_libraries(intrinsics-tester PRIVATE ${Z3_LIBRARIES})
-    endif()
-  endif()
-endif()
+target_link_libraries(alive PRIVATE ${Z3_LIBRARIES} ${HIREDIS_LIBRARIES})
+#target_link_libraries(alive2 PRIVATE ${Z3_LIBRARIES} ${HIREDIS_LIBRARIES})
 
 if (NOT DEFINED TEST_NTHREADS)
   ProcessorCount(TEST_NTHREADS)

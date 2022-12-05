@@ -4,7 +4,12 @@
 #include "ir/constant.h"
 #include "smt/expr.h"
 #include "util/compiler.h"
+#include <bit>
 #include <cassert>
+// TODO: remove cstring when migrated to std::bit_cast
+#include <cstring>
+#include <iomanip>
+#include <sstream>
 
 using namespace smt;
 using namespace std;
@@ -21,7 +26,7 @@ IntConst::IntConst(Type &type, int64_t val)
   : Constant(type, to_string(val)), val(val) {}
 
 IntConst::IntConst(Type &type, string &&val)
-  : Constant(type, string(val)), val(move(val)) {}
+  : Constant(type, string(val)), val(std::move(val)) {}
 
 StateValue IntConst::toSMT(State &s) const {
   if (auto v = get_if<int64_t>(&val))
@@ -39,12 +44,31 @@ expr IntConst::getTypeConstraints() const {
          getType().sizeVar().uge(min_bits);
 }
 
+template <typename T>
+static uint64_t mbit_cast(T val) {
+  // FIXME: Apple's clang doesn't have std::bit_cast nor does gcc 10
+  uint64_t bits;
+  assert(sizeof(bits) == sizeof(T));
+  memcpy(&bits, &val, sizeof(T));
+  return bits;
+}
+
+static string double_to_string(double val, unsigned bits) {
+  auto str = to_string(val);
+  // no loss of precision
+  if (strtod(str.c_str(), nullptr) == val)
+    return str;
+
+  ostringstream os;
+  os << "0x" << hex << setfill('0') << setw(bits/4) << mbit_cast<uint64_t>(val);
+  return std::move(os).str();
+}
 
 FloatConst::FloatConst(Type &type, double val)
-  : Constant(type, to_string(val)), val(val) {}
+  : Constant(type, double_to_string(val, type.bits())), val(val) {}
 
 FloatConst::FloatConst(Type &type, string val, bool bit_value)
-  : Constant(type, string(val)), val(move(val)), bit_value(bit_value) {}
+  : Constant(type, string(val)), val(std::move(val)), bit_value(bit_value) {}
 
 expr FloatConst::getTypeConstraints() const {
   return Value::getTypeConstraints() &&
@@ -71,7 +95,7 @@ StateValue FloatConst::toSMT(State &s) const {
   case FloatType::Quad:
   case FloatType::Unknown: UNREACHABLE();
   }
-  return { move(e), true };
+  return { std::move(e), true };
 }
 
 
@@ -100,7 +124,7 @@ ConstantBinOp::ConstantBinOp(Type &type, Constant &lhs, Constant &rhs, Op op)
   str += opname;
   str += rhs.getName();
   str += ')';
-  this->setName(move(str));
+  this->setName(std::move(str));
 }
 
 static void div_ub(const expr &a, const expr &b, State &s, bool sign) {
@@ -126,7 +150,7 @@ StateValue ConstantBinOp::toSMT(State &s) const {
     div_ub(a, b, s, false);
     break;
   }
-  return { move(val), ap && bp };
+  return { std::move(val), ap && bp };
 }
 
 expr ConstantBinOp::getTypeConstraints() const {
@@ -138,7 +162,7 @@ expr ConstantBinOp::getTypeConstraints() const {
 
 
 ConstantFn::ConstantFn(Type &type, string_view name, vector<Value*> &&args)
-  : Constant(type, ""), args(move(args)) {
+  : Constant(type, ""), args(std::move(args)) {
   unsigned num_args;
   if (name == "log2") {
     fn = LOG2;
@@ -165,7 +189,7 @@ ConstantFn::ConstantFn(Type &type, string_view name, vector<Value*> &&args)
     str += arg->getName();
   }
   str += ')';
-  this->setName(move(str));
+  this->setName(std::move(str));
 }
 
 StateValue ConstantFn::toSMT(State &s) const {
@@ -179,7 +203,7 @@ StateValue ConstantFn::toSMT(State &s) const {
     r = args[0]->bits();
     break;
   }
-  return { move(r), true };
+  return { std::move(r), true };
 }
 
 expr ConstantFn::getTypeConstraints() const {

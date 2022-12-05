@@ -20,6 +20,7 @@ smt::solver_print_queries(opt_smt_verbose);
 smt::solver_tactic_verbose(opt_tactic_verbose);
 config::debug = opt_debug;
 config::max_offset_bits = opt_max_offset_in_bits;
+config::max_sizet_bits  = opt_max_sizet_in_bits;
 
 func_names.insert(opt_funcs.begin(), opt_funcs.end());
 
@@ -38,6 +39,8 @@ if (!report_dir_created && !opt_report_dir.empty()) {
   if (!opt_overwrite_reports) {
     do {
       auto newname = fname.stem();
+      if (newname.compare("-") == 0 || newname.compare("<stdin>") == 0)
+        newname = "in";
       newname += "_" + get_random_str(8) + ".txt";
       path.replace_filename(newname);
     } while (fs::exists(path));
@@ -75,3 +78,13 @@ if (!opt_outputfile.empty()) {
 }
 
 util::config::set_debug(*out);
+
+
+if (opt_cache) {
+#ifdef NO_REDIS_SUPPORT
+  cerr << "REDIS support not compiled in!\n";
+  exit(1);
+#else
+  cache = make_unique<Cache>(opt_cache_port, opt_cache_allow_version_mismatch);
+#endif
+}

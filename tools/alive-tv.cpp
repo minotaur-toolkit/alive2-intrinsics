@@ -1,7 +1,9 @@
 // Copyright (c) 2018-present The Alive2 Authors.
 // Distributed under the MIT license that can be found in the LICENSE file.
 
+#include "cache/cache.h"
 #include "llvm_util/llvm2alive.h"
+#include "llvm_util/llvm_optimizer.h"
 #include "smt/smt.h"
 #include "tools/transform.h"
 #include "util/version.h"
@@ -58,6 +60,14 @@ llvm::cl::opt<std::string> opt_tgt_fn(LLVM_ARGS_PREFIX"tgt-fn",
   llvm::cl::desc("Name of tgt function (without @)"),
   llvm::cl::cat(alive_cmdargs), llvm::cl::init("tgt"));
 
+llvm::cl::opt<string>
+    optPass(LLVM_ARGS_PREFIX "passes",
+            llvm::cl::value_desc("optimization passes"),
+            llvm::cl::desc("Specify which LLVM passes to run (default=O2). "
+                           "The syntax is described at "
+                           "https://llvm.org/docs/NewPassManager.html#invoking-opt"),
+            llvm::cl::cat(alive_cmdargs), llvm::cl::init("O2"));
+
 
 llvm::ExitOnError ExitOnErr;
 
@@ -67,7 +77,7 @@ std::unique_ptr<llvm::Module> openInputFile(llvm::LLVMContext &Context,
   auto MB =
     ExitOnErr(errorOrToExpected(llvm::MemoryBuffer::getFile(InputFilename)));
   llvm::SMDiagnostic Diag;
-  auto M = getLazyIRModule(move(MB), Diag, Context,
+  auto M = getLazyIRModule(std::move(MB), Diag, Context,
                            /*ShouldLazyLoadMetadata=*/true);
   if (!M) {
     Diag.print("", llvm::errs(), false);
@@ -78,6 +88,7 @@ std::unique_ptr<llvm::Module> openInputFile(llvm::LLVMContext &Context,
 }
 
 optional<smt::smt_initializer> smt_init;
+unique_ptr<Cache> cache;
 
 struct Results {
   Transform t;
@@ -95,7 +106,7 @@ struct Results {
   static Results Error(string &&err) {
     Results r;
     r.status = ERROR;
-    r.error = move(err);
+    r.error = std::move(err);
     return r;
   }
 };
@@ -104,25 +115,25 @@ Results verify(llvm::Function &F1, llvm::Function &F2,
                llvm::TargetLibraryInfoWrapperPass &TLI,
                bool print_transform = false,
                bool always_verify = false) {
-  auto fn1 = llvm2alive(F1, TLI.getTLI(F1));
+  auto fn1 = llvm2alive(F1, TLI.getTLI(F1), true);
   if (!fn1)
     return Results::Error("Could not translate '" + F1.getName().str() +
                           "' to Alive IR\n");
 
-  auto fn2 = llvm2alive(F2, TLI.getTLI(F2), fn1->getGlobalVarNames());
+  auto fn2 = llvm2alive(F2, TLI.getTLI(F2), false, fn1->getGlobalVarNames());
   if (!fn2)
     return Results::Error("Could not translate '" + F2.getName().str() +
                           "' to Alive IR\n");
 
   Results r;
-  r.t.src = move(*fn1);
-  r.t.tgt = move(*fn2);
+  r.t.src = std::move(*fn1);
+  r.t.tgt = std::move(*fn2);
 
   if (!always_verify) {
     stringstream ss1, ss2;
     r.t.src.print(ss1);
     r.t.tgt.print(ss2);
-    if (ss1.str() == ss2.str()) {
+    if (std::move(ss1).str() == std::move(ss2).str()) {
       if (print_transform)
         r.t.print(*out, {});
       r.status = Results::SYNTACTIC_EQ;
@@ -237,26 +248,6 @@ bool compareFunctions(llvm::Function &F1, llvm::Function &F2,
   return true;
 }
 
-void optimizeModule(llvm::Module *M) {
-  llvm::LoopAnalysisManager LAM;
-  llvm::FunctionAnalysisManager FAM;
-  llvm::CGSCCAnalysisManager CGAM;
-  llvm::ModuleAnalysisManager MAM;
-
-  llvm::PassBuilder PB;
-  PB.registerModuleAnalyses(MAM);
-  PB.registerCGSCCAnalyses(CGAM);
-  PB.registerFunctionAnalyses(FAM);
-  PB.registerLoopAnalyses(LAM);
-  PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
-
-  llvm::FunctionPassManager FPM = PB.buildFunctionSimplificationPipeline(
-      llvm::OptimizationLevel::O2, llvm::ThinOrFullLTOPhase::None);
-  llvm::ModulePassManager MPM;
-  MPM.addPass(createModuleToFunctionPassAdaptor(std::move(FPM)));
-  MPM.run(*M, MAM);
-}
-
 llvm::Function *findFunction(llvm::Module &M, const string &FName) {
   for (auto &F : M) {
     if (F.isDeclaration())
@@ -269,12 +260,14 @@ llvm::Function *findFunction(llvm::Module &M, const string &FName) {
 }
 }
 
+
 int main(int argc, char **argv) {
   llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
   llvm::PrettyStackTraceProgram X(argc, argv);
   llvm::EnableDebugBuffering = true;
   llvm::llvm_shutdown_obj llvm_shutdown; // Call llvm_shutdown() on exit.
   llvm::LLVMContext Context;
+  unsigned M1_anon_count = 0;
 
   std::string Usage =
       R"EOF(Alive2 stand-alone translation validator:
@@ -330,7 +323,11 @@ convenient way to demonstrate an existing optimizer bug.
       goto end;
     } else {
       M2 = CloneModule(*M1);
-      optimizeModule(M2.get());
+      auto err = optimize_module(M2.get(), optPass);
+      if (!err.empty()) {
+        *out << "Error parsing list of LLVM passes: " << err << '\n';
+        return -1;
+      }
     }
   } else {
     M2 = openInputFile(Context, opt_file2);
@@ -350,15 +347,23 @@ convenient way to demonstrate an existing optimizer bug.
   for (auto &F1 : *M1.get()) {
     if (F1.isDeclaration())
       continue;
+    if (F1.getName().empty())
+      M1_anon_count++;
     if (!func_names.empty() && !func_names.count(F1.getName().str()))
       continue;
+    unsigned M2_anon_count = 0;
     for (auto &F2 : *M2.get()) {
-      if (F2.isDeclaration() || F1.getName() != F2.getName())
+      if (F2.isDeclaration())
         continue;
-      if (!compareFunctions(F1, F2, TLI))
-        if (opt_error_fatal)
-          goto end;
-      break;
+      if (F2.getName().empty())
+        M2_anon_count++;
+      if ((F1.getName().empty() && (M1_anon_count == M2_anon_count)) ||
+          (F1.getName() == F2.getName())) {
+        if (!compareFunctions(F1, F2, TLI))
+          if (opt_error_fatal)
+            goto end;
+        break;
+      }
     }
   }
 

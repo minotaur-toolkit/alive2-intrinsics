@@ -83,27 +83,28 @@ struct Results {
   static Results Error(string &&err) {
     Results r;
     r.status = ERROR;
-    r.error = move(err);
+    r.error = std::move(err);
     return r;
   }
 };
 
 Results verify(llvm::Function &F1, llvm::Function &F2,
                llvm::TargetLibraryInfoWrapperPass &TLI,
-               bool print_transform = false, bool always_verify = false) {
-  auto fn1 = llvm2alive(F1, TLI.getTLI(F1));
+               bool print_transform = false,
+               bool always_verify = false) {
+  auto fn1 = llvm2alive(F1, TLI.getTLI(F1), true);
   if (!fn1)
     return Results::Error("Could not translate '" + F1.getName().str() +
                           "' to Alive IR\n");
 
-  auto fn2 = llvm2alive(F2, TLI.getTLI(F2), fn1->getGlobalVarNames());
+  auto fn2 = llvm2alive(F2, TLI.getTLI(F2), false, fn1->getGlobalVarNames());
   if (!fn2)
     return Results::Error("Could not translate '" + F2.getName().str() +
                           "' to Alive IR\n");
 
   Results r;
-  r.t.src = move(*fn1);
-  r.t.tgt = move(*fn2);
+  r.t.src = std::move(*fn1);
+  r.t.tgt = std::move(*fn2);
 
   if (!always_verify) {
     stringstream ss1, ss2;

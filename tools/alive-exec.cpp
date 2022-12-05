@@ -1,6 +1,7 @@
 // Copyright (c) 2018-present The Alive2 Authors.
 // Distributed under the MIT license that can be found in the LICENSE file.
 
+#include "cache/cache.h"
 #include "ir/type.h"
 #include "llvm_util/llvm2alive.h"
 #include "smt/expr.h"
@@ -54,7 +55,7 @@ std::unique_ptr<llvm::Module> openInputFile(llvm::LLVMContext &Context,
   auto MB =
     ExitOnErr(errorOrToExpected(llvm::MemoryBuffer::getFile(InputFilename)));
   llvm::SMDiagnostic Diag;
-  auto M = getLazyIRModule(move(MB), Diag, Context,
+  auto M = getLazyIRModule(std::move(MB), Diag, Context,
                            /*ShouldLazyLoadMetadata=*/true);
   if (!M) {
     Diag.print("", llvm::errs(), false);
@@ -65,10 +66,11 @@ std::unique_ptr<llvm::Module> openInputFile(llvm::LLVMContext &Context,
 }
 
 optional<smt::smt_initializer> smt_init;
+unique_ptr<Cache> cache;
 
 void execFunction(llvm::Function &F, llvm::TargetLibraryInfoWrapperPass &TLI,
                   unsigned &successCount, unsigned &errorCount) {
-  auto Func = llvm2alive(F, TLI.getTLI(F));
+  auto Func = llvm2alive(F, TLI.getTLI(F), true);
   if (!Func) {
     cerr << "ERROR: Could not translate '" << F.getName().str()
          << "' to Alive IR\n";
@@ -80,8 +82,8 @@ void execFunction(llvm::Function &F, llvm::TargetLibraryInfoWrapperPass &TLI,
   }
 
   Transform t;
-  t.src = move(*Func);
-  t.tgt = *llvm2alive(F, TLI.getTLI(F));
+  t.src = std::move(*Func);
+  t.tgt = *llvm2alive(F, TLI.getTLI(F), false);
   t.preprocess();
   TransformVerify verifier(t, false);
   if (!opt_quiet)
@@ -120,7 +122,7 @@ void execFunction(llvm::Function &F, llvm::TargetLibraryInfoWrapperPass &TLI,
   smt_init->reset();
   try {
     auto p = verifier.exec();
-    const auto &state = *p.first;
+    auto &state = *p.first;
     const auto &fn = t.src;
     const auto *bb = &fn.getFirstBB();
 

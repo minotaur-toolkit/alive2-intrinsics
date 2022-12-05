@@ -3,6 +3,7 @@
 
 #include "ir/fast_math.h"
 #include "ir/attrs.h"
+#include "util/spaceship.h"
 #include "util/unionfind.h"
 #include <map>
 #include <vector>
@@ -28,7 +29,6 @@ struct Node {
   enum { Add, Sub, Mul, Div, Neg, Leaf } operation;
   unsigned op1 = -1u, op2 = -1u;
   expr leaf;
-  // FIXME: we currently ignore rounding
   expr rounding;
   unsigned flags = 0;
 
@@ -36,7 +36,7 @@ struct Node {
 
 #ifdef DEBUG_FMF
   friend ostream& operator<<(ostream &os, const Node &n) {
-    const char *op;
+    const char *op = nullptr;
     switch (n.operation) {
       case Add:  op = "add "; break;
       case Sub:  op = "sub "; break;
@@ -70,7 +70,7 @@ class EGraph {
   vector<vector<const Node*>> nodes_eqs; // root -> equiv nodes
 
   unsigned get(Node &&n) {
-    auto [I, inserted] = nodes.try_emplace(move(n), 0);
+    auto [I, inserted] = nodes.try_emplace(std::move(n), 0);
     if (inserted) {
       I->second = uf.mk();
       nodes_eqs.emplace_back(1, &I->first);
@@ -79,7 +79,7 @@ class EGraph {
   }
 
   void decl_equivalent(Node &&node, unsigned n1) {
-    unsigned n2 = get(move(node));
+    unsigned n2 = get(std::move(node));
     unsigned new_root = uf.merge(n2, n1);
     auto &root = nodes_eqs[new_root];
 
@@ -141,13 +141,13 @@ public:
 
       if (is_leaf) {
         n.operation = Node::Leaf;
-        n.leaf      = move(e);
+        n.leaf      = std::move(e);
       } else {
         n.op1      = get(a);
-        n.rounding = move(rounding);
+        n.rounding = std::move(rounding);
       }
 
-      return get(move(n));
+      return get(std::move(n));
     }
   }
 
@@ -166,7 +166,7 @@ public:
             nn.op2 = root(node.op2);
           assert(is_neq(node <=> nn));
 
-          decl_equivalent(move(nn), n);
+          decl_equivalent(std::move(nn), n);
           remove(node);
           changed = true;
           continue;
@@ -177,7 +177,7 @@ public:
         if (node.operation == Node::Add || node.operation == Node::Mul) {
           Node nn = node;
           swap(nn.op1, nn.op2);
-          decl_equivalent(move(nn), n);
+          decl_equivalent(std::move(nn), n);
         }
 
         if (node.flags & FastMathFlags::Reassoc) {
@@ -245,16 +245,16 @@ public:
         expr val;
         switch (node->operation) {
         case Node::Add:
-          val = exprs[node->op1]->fadd(*exprs[node->op2]);
+          val = exprs[node->op1]->fadd(*exprs[node->op2], node->rounding);
           break;
         case Node::Sub:
-          val = exprs[node->op1]->fsub(*exprs[node->op2]);
+          val = exprs[node->op1]->fsub(*exprs[node->op2], node->rounding);
           break;
         case Node::Mul:
-          val = exprs[node->op1]->fmul(*exprs[node->op2]);
+          val = exprs[node->op1]->fmul(*exprs[node->op2], node->rounding);
           break;
         case Node::Div:
-          val = exprs[node->op1]->fdiv(*exprs[node->op2]);
+          val = exprs[node->op1]->fdiv(*exprs[node->op2], node->rounding);
           break;
         case Node::Neg:
           val = exprs[node->op1]->fneg();
@@ -262,22 +262,22 @@ public:
         case Node::Leaf:
           val = node->leaf;
         }
-        vals.add(move(val), expr(true));
+        vals.add(std::move(val), expr(true));
       }
 
       if (!has_all)
         continue;
 
-      auto [val, domain, qvar, pre] = vals();
+      auto [val, domain, qvar, pre] = std::move(vals)();
       assert(domain.isTrue());
-      exprs[node_id] = move(val);
+      exprs[node_id] = std::move(val);
       // TODO: handle qvar, pre
       todo.pop_back();
 
     } while (!todo.empty());
 
     assert(exprs.size() >= n && exprs[n]);
-    return move(*exprs[n]);
+    return std::move(*exprs[n]);
   }
 
 #ifdef DEBUG_FMF

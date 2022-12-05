@@ -4,37 +4,53 @@ on: [push, pull_request]
 
 jobs:
   build:
-    name: ${{ matrix.os }} ${{ matrix.compiler }} ${{ matrix.build_type }}
+    name: ${{ matrix.os }} ${{ matrix.compiler }} ${{ matrix.build_type }} ${{ matrix.cache }}
     runs-on: ${{ matrix.os }}
 
     strategy:
       matrix:
-        os:         [ubuntu-20.04]
-        compiler:   [g++-10, g++-11, clang++-12, clang++-13]
+        os:         [ubuntu-22.04]
+        compiler:   [g++-11, clang++-15, clang++-16]
         build_type: [Release, Debug]
+        cache:      ['', Redis]
         include:
-          - os: macos-latest
+          - os: macos-12
             compiler: clang++
             build_type: Release
-          - os: macos-latest
+          - os: macos-12
             compiler: clang++
             build_type: Debug
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
           wget -O- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-          sudo add-apt-repository "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-13 main"
+          if [[ ${{ matrix.compiler }} == "clang++-15" ]]; then
+            sudo add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-15 main"
+          fi
+          if [[ ${{ matrix.compiler }} == "clang++-16" ]]; then
+            sudo add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy main"
+          fi
           sudo apt-get update
-          sudo apt-get install z3 re2c ninja-build g++-11 clang++-13
+          sudo apt-get install z3 re2c ninja-build g++-12
+          if [[ ${{ matrix.compiler }} == "clang++-15" ]]; then
+            sudo apt-get install clang++-15
+          fi
+          if [[ ${{ matrix.compiler }} == "clang++-16" ]]; then
+            sudo apt-get install clang++-16
+          fi
+          if [[ "${{ matrix.cache }}" == "Redis" ]]; then
+            sudo apt-get install libhiredis-dev
+          fi
 
       - name: Install dependencies (MacOS)
         if: runner.os == 'macOS'
-        run: brew install z3 re2c ninja
+        run: |
+          brew install z3 re2c ninja
 
       - name: Compile
         run: ./.github/scripts/build.sh

@@ -34,6 +34,7 @@ public:
   auto& getType() const { return type; }
   bool isVoid() const;
 
+  virtual void rauw(const Value &what, Value &with);
   virtual void print(std::ostream &os) const = 0;
   virtual StateValue toSMT(State &s) const = 0;
   virtual smt::expr getTypeConstraints() const;
@@ -102,6 +103,7 @@ class AggregateValue final : public Value {
 public:
   AggregateValue(Type &type, std::vector<Value*> &&vals);
   auto& getVals() const { return vals; }
+  void rauw(const Value &what, Value &with) override;
   smt::expr getTypeConstraints() const override;
   void print(std::ostream &os) const override;
   StateValue toSMT(State &s) const override;
@@ -114,12 +116,12 @@ class Input final : public Value {
   std::string getSMTName(unsigned child) const;
   StateValue mkInput(State &s, const Type &ty, unsigned child) const;
 public:
-  Input(Type &type, std::string &&name,
-        ParamAttrs &&attrs = ParamAttrs::None);
+  Input(Type &type, std::string &&name, ParamAttrs &&attrs = ParamAttrs::None);
   void copySMTName(const Input &other);
   void print(std::ostream &os) const override;
   bool hasAttribute(ParamAttrs::Attribute a) const { return attrs.has(a); }
   const ParamAttrs &getAttributes() const { return attrs; }
+  void merge(const ParamAttrs &other);
   StateValue toSMT(State &s) const override;
   smt::expr getUndefVar(const Type &ty, unsigned child) const;
 

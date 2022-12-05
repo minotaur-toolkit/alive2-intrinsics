@@ -15,6 +15,9 @@ Included tools:
 * Translation validation plugins for clang and LLVM's `opt`
 * Standalone translation validation tool: `alive-tv` ([online](https://alive2.llvm.org))
 
+For a technical introduction to Alive2, please see [our paper from
+PLDI 2021](https://web.ist.utl.pt/nuno.lopes/pubs.php?id=alive2-pldi21).
+
 
 WARNING
 -------
@@ -30,6 +33,7 @@ To build Alive2 you need recent versions of:
 * re2c
 * Z3
 * LLVM (optional)
+* hiredis (optional, needed for caching)
 
 
 Building
@@ -55,6 +59,7 @@ LLVM can be built in the following way:
 ```
 cd llvm
 mkdir build
+cd build
 cmake -GNinja -DLLVM_ENABLE_RTTI=ON -DLLVM_ENABLE_EH=ON -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release -DLLVM_TARGETS_TO_BUILD=X86 -DLLVM_ENABLE_ASSERTIONS=ON -DLLVM_ENABLE_PROJECTS="llvm;clang" ../llvm
 ```
 
@@ -263,6 +268,20 @@ currently highly experimental and has many restrictions. For example,
 the function cannot take inputs, cannot use memory, cannot depend on
 undefined behaviors, and cannot include loops that execute too many
 iterations.
+
+Caching
+--------
+
+The alive-tv tool and the Alive2 translation validation opt plugin
+support using an external Redis server to avoid performing redundant
+queries. This feature is not intended for general use, but rather to
+speed up certain systematic testing workloads that perform a lot of
+repeated work. When it hits a repeated refinement check, it prints
+"Skipping repeated query" instead of performing the query.
+
+If you want to use this functionality, you will need to manually start
+and stop, as appropriate, a Redis server instance on localhost. Alive2
+should be the only user of this server.
 
 LLVM Bugs Found by Alive2
 --------

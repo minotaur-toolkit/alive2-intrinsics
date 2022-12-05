@@ -128,17 +128,42 @@ llvm::cl::opt<string> opt_report_dir(LLVM_ARGS_PREFIX "report-dir",
   llvm::cl::cat(alive_cmdargs));
 
 bool report_dir_created = false;
-string report_filename;
+fs::path report_filename;
+
+llvm::cl::opt<bool> opt_save_ir(LLVM_ARGS_PREFIX "save-ir",
+  llvm::cl::desc("Save LLVM IR into the report directory upon encountering a "
+                 "verification error"),
+  llvm::cl::init(false), llvm::cl::cat(alive_cmdargs));
 
 llvm::cl::opt<bool> opt_overwrite_reports(LLVM_ARGS_PREFIX "overwrite-reports",
   llvm::cl::desc("Overwrite existing report files"),
   llvm::cl::init(false), llvm::cl::cat(alive_cmdargs));
+
+llvm::cl::opt<bool> opt_cache(LLVM_ARGS_PREFIX "cache",
+  llvm::cl::init(false),
+  llvm::cl::desc("Use external cache (default=false)"));
+
+llvm::cl::opt<unsigned> opt_cache_port(LLVM_ARGS_PREFIX "cache-port",
+  llvm::cl::init(6379),
+  llvm::cl::desc("Port to connect to Redis server (default=6379"));
+
+llvm::cl::opt<bool> opt_cache_allow_version_mismatch(LLVM_ARGS_PREFIX
+  "cache-allow-version-mismatch", llvm::cl::init(false),
+  llvm::cl::desc("Allow external cache to have been created by a different "
+                 "version of Alive2 (default=false"));
 
 llvm::cl::opt<unsigned> opt_max_offset_in_bits(
   LLVM_ARGS_PREFIX "max-offset-in-bits", llvm::cl::init(64),
   llvm::cl::desc("Upper bound for the maximum pointer offset in bits.  Note "
                  "that this may impact correctness, if values involved in "
                  "offset computations exceed the maximum."),
+  llvm::cl::cat(alive_cmdargs));
+
+llvm::cl::opt<unsigned> opt_max_sizet_in_bits(
+  LLVM_ARGS_PREFIX "max-sizet-in-bits", llvm::cl::init(64),
+  llvm::cl::desc("Upper bound for the size of size_t. "
+                 "Note that this may impact correctness if the required "
+                 "address space size exceeds the specified limit."),
   llvm::cl::cat(alive_cmdargs));
 
 }

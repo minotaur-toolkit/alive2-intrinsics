@@ -15,6 +15,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace IR {
@@ -28,6 +29,7 @@ class State {
 public:
   struct ValTy {
     StateValue val;
+    smt::expr return_domain;
     smt::expr domain;
     std::set<smt::expr> undef_vars;
   };
@@ -36,6 +38,7 @@ private:
   struct CurrentDomain {
     smt::expr path = true; // path from fn entry
     smt::AndExpr UB;
+    smt::expr noreturn;
     std::set<smt::expr> undef_vars;
 
     smt::expr operator()() const;
@@ -71,7 +74,7 @@ private:
     smt::expr is_va_start;
     smt::expr active; // false if this entry is repeated
 
-    VarArgsEntry() {}
+    VarArgsEntry() = default;
     VarArgsEntry(smt::expr &&alive, smt::expr &&next_arg, smt::expr &&num_args,
                  smt::expr &&is_va_start, smt::expr &&active)
       : alive(std::move(alive)), next_arg(std::move(next_arg)),
@@ -83,8 +86,8 @@ private:
 
   struct VarArgsData {
     std::map<smt::expr, VarArgsEntry> data;
-    static VarArgsData mkIf(const smt::expr &cond, const VarArgsData &then,
-                            const VarArgsData &els);
+    static VarArgsData mkIf(const smt::expr &cond, VarArgsData &&then,
+                            VarArgsData &&els);
     auto operator<=>(const VarArgsData &rhs) const = default;
   };
 
@@ -121,23 +124,27 @@ private:
   // Global variables' memory block ids & Memory::alloc has been called?
   std::unordered_map<std::string, std::pair<unsigned, bool>> glbvar_bids;
 
+  // The value of a 'returned' input
+  std::optional<StateValue> returned_input;
+
   // temp state
   const BasicBlock *current_bb = nullptr;
   CurrentDomain domain;
   Memory memory;
+  smt::expr fp_rounding_mode;
   std::set<smt::expr> undef_vars;
   ValueAnalysis analysis;
   std::array<StateValue, 64> tmp_values;
   unsigned i_tmp_values = 0; // next available position in tmp_values
 
-  StateValue* no_more_tmp_slots();
+  void check_enough_tmp_slots();
 
   // return_domain: a boolean expression describing return condition
   smt::OrExpr return_domain;
   // function_domain: a condition for function having well-defined behavior
   smt::OrExpr function_domain;
-  smt::DisjointExpr<StateValue> return_val;
-  smt::DisjointExpr<Memory> return_memory;
+  std::variant<smt::DisjointExpr<StateValue>, StateValue> return_val;
+  std::variant<smt::DisjointExpr<Memory>, Memory> return_memory;
   std::set<smt::expr> return_undef_vars;
 
   struct FnCallInput {
@@ -178,6 +185,8 @@ private:
 
   VarArgsData var_args_data;
 
+  const StateValue& returnValCached();
+
 public:
   State(const Function &f, bool source);
 
@@ -212,6 +221,7 @@ public:
   void addUB(const smt::expr &ub);
   void addUB(smt::AndExpr &&ubs);
   void addNoReturn(const smt::expr &cond);
+  bool isViablePath() const { return domain.UB; }
 
   std::vector<StateValue>
     addFnCall(const std::string &name, std::vector<StateValue> &&inputs,
@@ -240,6 +250,7 @@ public:
   auto& getFn() const { return f; }
   auto& getMemory() const { return memory; }
   auto& getMemory() { return memory; }
+  auto& getFpRoundingMode() const { return fp_rounding_mode; }
   auto& getAxioms() const { return axioms; }
   auto& getPre() const { return precondition; }
   auto& getFnPre() const { return fn_call_pre; }
@@ -247,12 +258,17 @@ public:
   const auto& getQuantVars() const { return quantified_vars; }
   const auto& getFnQuantVars() const { return fn_call_qvars; }
 
-  auto& functionDomain() const { return function_domain; }
-  smt::expr sinkDomain() const;
-  Memory returnMemory() const { return *return_memory(); }
+  void saveReturnedInput();
+  const std::optional<StateValue>& getReturnedInput() const {
+    return returned_input;
+  }
 
-  ValTy returnVal() const {
-    return { *return_val(), return_domain(), return_undef_vars };
+  smt::expr sinkDomain() const;
+  Memory& returnMemory();
+
+  ValTy returnVal() {
+    return { returnValCached(), return_domain(), function_domain(),
+             return_undef_vars };
   }
 
   smt::expr getJumpCond(const BasicBlock &src, const BasicBlock &dst) const;
@@ -268,13 +284,13 @@ public:
   bool hasGlobalVarBid(const std::string &glbvar, unsigned &bid,
                        bool &allocated) const;
   void markGlobalAsAllocated(const std::string &glbvar);
-  void syncSEdataWithSrc(const State &src);
+  void syncSEdataWithSrc(State &src);
 
   void mkAxioms(State &tgt);
 
 private:
   smt::expr strip_undef_and_add_ub(const Value &val, const smt::expr &e);
-  void addJump(const BasicBlock &dst, smt::expr &&domain);
+  void addJump(const BasicBlock &dst, smt::expr &&cond, bool last_jump = false);
 };
 
 }

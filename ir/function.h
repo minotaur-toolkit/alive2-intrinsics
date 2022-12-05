@@ -49,7 +49,7 @@ public:
   JumpInstr::it_helper targets() const;
   void replaceTargetWith(const BasicBlock *from, const BasicBlock *to);
 
-  std::unique_ptr<BasicBlock> dup(const std::string &suffix) const;
+  std::unique_ptr<BasicBlock> dup(Function &f, const std::string &suffix) const;
   void rauw(const Value &what, Value &with);
 
   friend std::ostream& operator<<(std::ostream &os, const BasicBlock &bb);
@@ -108,6 +108,8 @@ public:
   const BasicBlock& getBB(std::string_view name) const;
   const BasicBlock& bbOf(const Instr &i) const;
 
+  BasicBlock& insertBBAfter(std::string_view name, const BasicBlock &bb);
+
   void removeBB(BasicBlock &BB);
 
   void addConstant(std::unique_ptr<Value> &&c);
@@ -133,7 +135,6 @@ public:
   util::const_strip_unique_ptr<decltype(inputs)> getInputs() const {
     return inputs;
   }
-  bool hasSameInputs(const Function &rhs) const;
   Value *getReturnedInput() const { return returned_input; }
   void setReturnedInput(Value *v) { returned_input = v; }
 

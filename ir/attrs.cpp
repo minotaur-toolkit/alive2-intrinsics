@@ -2,6 +2,7 @@
 // Distributed under the MIT license that can be found in the LICENSE file.
 
 #include "ir/attrs.h"
+#include "ir/globals.h"
 #include "ir/memory.h"
 #include "ir/state.h"
 #include "ir/state_value.h"
@@ -35,7 +36,27 @@ ostream& operator<<(ostream &os, const ParamAttrs &attr) {
     os << "noalias ";
   if (attr.has(ParamAttrs::DereferenceableOrNull))
     os << "dereferenceable_or_null(" << attr.derefOrNullBytes << ") ";
+  if (attr.has(ParamAttrs::AllocPtr))
+    os << "allocptr ";
+  if (attr.has(ParamAttrs::AllocAlign))
+    os << "allocalign ";
   return os;
+}
+
+
+static ostream& operator<<(ostream &os, FPDenormalAttrs::Type t) {
+  const char *str = nullptr;
+  switch (t) {
+  case FPDenormalAttrs::IEEE:         str = "ieee"; break;
+  case FPDenormalAttrs::PreserveSign: str = "preserve-sign"; break;
+  case FPDenormalAttrs::PositiveZero: str = "positive-zero"; break;
+  }
+  return os << str;
+}
+
+void FPDenormalAttrs::print(ostream &os, bool is_fp32) const {
+  os << " denormal-fp-math" << (is_fp32 ? "-f32=" : "=")
+     << output << ',' << input;
 }
 
 
@@ -70,7 +91,60 @@ ostream& operator<<(ostream &os, const FnAttrs &attr) {
     os << " dereferenceable_or_null(" << attr.derefOrNullBytes << ')';
   if (attr.has(FnAttrs::InaccessibleMemOnly))
     os << " inaccessiblememonly";
+  if (attr.has(FnAttrs::NullPointerIsValid))
+    os << " null_pointer_is_valid";
+  if (!attr.allocfamily.empty())
+    os << " alloc-family(" << attr.allocfamily << ')';
+  if (attr.allockind != 0) {
+    os << " allockind(";
+    bool first = true;
+    auto print = [&](AllocKind kind, const char *str) {
+      if (attr.has(kind)) {
+        if (!first) os << ", ";
+        os << str;
+        first = false;
+      }
+    };
+    print(AllocKind::Alloc, "alloc");
+    print(AllocKind::Realloc, "realloc");
+    print(AllocKind::Free, "free");
+    print(AllocKind::Uninitialized, "uninitialized");
+    print(AllocKind::Zeroed, "zeroed");
+    print(AllocKind::Aligned, "aligned");
+    os << ')';
+  }
+  if (attr.has(FnAttrs::AllocSize)) {
+    os << " allocsize(" << attr.allocsize_0;
+    if (attr.allocsize_1 != -1u)
+      os << ", " << attr.allocsize_1;
+    os << ')';
+  }
+
+  attr.fp_denormal.print(os);
+  if (attr.fp_denormal32)
+    attr.fp_denormal32->print(os, true);
   return os;
+}
+
+bool ParamAttrs::refinedBy(const ParamAttrs &other) const {
+  // check attributes that are properties of the caller
+  unsigned attrs =
+    NonNull |
+    Dereferenceable |
+    NoUndef |
+    Align |
+    NoAlias |
+    DereferenceableOrNull
+  ;
+
+  auto other_params = (other.bits & attrs);
+  if ((bits & other_params) != other_params)
+    return false;
+
+  return derefBytes == other.derefBytes &&
+         derefOrNullBytes == other.derefOrNullBytes &&
+         blockSize == other.blockSize &&
+         align == other.align;
 }
 
 bool ParamAttrs::poisonImpliesUB() const {
@@ -95,78 +169,163 @@ uint64_t ParamAttrs::getDerefBytes() const {
   return bytes;
 }
 
-static void
-encodePtrAttrs(const State &s, const expr &ptrvalue,
-               AndExpr &UB, expr &non_poison,
-               uint64_t derefBytes, uint64_t derefOrNullBytes, uint64_t align,
-               bool nonnull, bool nocapture) {
-  Pointer p(s.getMemory(), ptrvalue);
+void ParamAttrs::merge(const ParamAttrs &other) {
+  bits            |= other.bits;
+  derefBytes       = max(derefBytes, other.derefBytes);
+  derefOrNullBytes = max(derefOrNullBytes, other.derefOrNullBytes);
+  blockSize        = max(blockSize, other.blockSize);
+  align            = max(align, other.align);
+}
+
+static expr
+encodePtrAttrs(State &s, const expr &ptrvalue, uint64_t derefBytes,
+               uint64_t derefOrNullBytes, uint64_t align, bool nonnull,
+               bool nocapture, const expr &deref_expr, Value *allocalign) {
+  auto &m = s.getMemory();
+  Pointer p(m, ptrvalue);
+  expr non_poison(true);
 
   if (nonnull)
     non_poison &= !p.isNull();
 
   non_poison &= p.isNocapture().implies(nocapture);
 
-  if (derefBytes || derefOrNullBytes) {
+  if (derefBytes || derefOrNullBytes || deref_expr.isValid()) {
     // dereferenceable, byval (ParamAttrs), dereferenceable_or_null
     if (derefBytes)
-      UB.add(p.isDereferenceable(derefBytes, align));
+      s.addUB(
+        Pointer(m, ptrvalue).isDereferenceable(derefBytes, align, false, true));
     if (derefOrNullBytes)
-      UB.add(p.isDereferenceable(derefOrNullBytes, align)() || p.isNull());
-  } else if (align != 1)
-    // align
-    non_poison &= p.isAligned(align);
+      s.addUB(p.isNull() ||
+              Pointer(m, ptrvalue).isDereferenceable(derefOrNullBytes, align,
+                                                     false, true)());
+    if (deref_expr.isValid())
+      s.addUB(p.isNull() ||
+              Pointer(m, ptrvalue).isDereferenceable(deref_expr, align, false,
+                                                     true)());
+  } else if (align > 1)
+    non_poison &= Pointer(m, ptrvalue).isAligned(align);
+
+  // TODO: handle non-constant allocalign
+  if (allocalign) {
+    StateValue align = s[*allocalign];
+    non_poison &= align.non_poison;
+    uint64_t val;
+    if (align.value.isUInt(val))
+      non_poison &= Pointer(m, ptrvalue).isAligned(val);
+  }
+  return non_poison;
 }
 
-pair<AndExpr, expr>
-ParamAttrs::encode(const State &s, const StateValue &val, const Type &ty) const {
-  AndExpr UB;
-  expr new_non_poison = val.non_poison;
-
+StateValue ParamAttrs::encode(State &s, StateValue &&val, const Type &ty) const{
   if (ty.isPtrType())
-    encodePtrAttrs(s, val.value, UB, new_non_poison, getDerefBytes(),
-                   derefOrNullBytes, align, has(NonNull), has(NoCapture));
+    val.non_poison &=
+      encodePtrAttrs(s, val.value, getDerefBytes(), derefOrNullBytes, align,
+                     has(NonNull), has(NoCapture), {}, nullptr);
 
   if (poisonImpliesUB()) {
-    UB.add(move(new_non_poison));
-    new_non_poison = true;
+    s.addUB(std::move(val.non_poison));
+    val.non_poison = true;
   }
 
-  return { move(UB), move(new_non_poison) };
+  return std::move(val);
 }
 
+
+pair<expr,expr>
+FnAttrs::computeAllocSize(State &s,
+                          const vector<pair<Value*, ParamAttrs>> &args) const {
+  if (!has(AllocSize))
+    return { {}, true };
+
+  auto &arg0 = s[*args[allocsize_0].first];
+  s.addUB(arg0.non_poison);
+  expr allocsize = arg0.value.zextOrTrunc(bits_size_t);
+  expr np_size   = arg0.non_poison;
+
+  auto check_trunc = [&](const expr &var) {
+    if (var.bits() > bits_size_t)
+      np_size &= var.extract(var.bits()-1, bits_size_t) == 0;
+  };
+  check_trunc(arg0.value);
+
+  if (allocsize_1 != -1u) {
+    auto &arg1 = s[*args[allocsize_1].first];
+    s.addUB(arg1.non_poison);
+
+    auto v = arg1.value.zextOrTrunc(bits_size_t);
+    np_size  &= arg1.non_poison;
+    np_size  &= allocsize.mul_no_uoverflow(v);
+    allocsize = allocsize * v;
+    check_trunc(arg1.value);
+  }
+  return { std::move(allocsize), std::move(np_size) };
+}
+
+bool FnAttrs::isNonNull() const {
+  return has(NonNull) ||
+         (!has(NullPointerIsValid) && derefBytes > 0);
+}
 
 bool FnAttrs::poisonImpliesUB() const {
   return has(Dereferenceable) || has(NoUndef) || has(NNaN) ||
-         has(DereferenceableOrNull);
+         has(DereferenceableOrNull) || has(AllocSize);
 }
 
 bool FnAttrs::undefImpliesUB() const {
-  bool ub = has(NoUndef) || has(Dereferenceable) || has(DereferenceableOrNull);
+  bool ub = has(NoUndef) || has(Dereferenceable) || has(DereferenceableOrNull)||
+            has(AllocSize);
   assert(!ub || poisonImpliesUB());
   return ub;
 }
 
-pair<AndExpr, expr>
-FnAttrs::encode(const State &s, const StateValue &val, const Type &ty) const {
-  AndExpr UB;
-  expr new_non_poison = val.non_poison;
+void FnAttrs::setFPDenormal(FPDenormalAttrs attr, unsigned bits) {
+  switch (bits) {
+  case 0:  fp_denormal = attr; break;
+  case 32: fp_denormal32 = attr; break;
+  default: UNREACHABLE();
+  }
+}
 
+FPDenormalAttrs FnAttrs::getFPDenormal(const Type &ty) const {
+  switch (ty.bits()) {
+  case 32: return fp_denormal32.value_or(fp_denormal);
+  default: return fp_denormal;
+  }
+}
+
+bool FnAttrs::refinedBy(const FnAttrs &other) const {
+  // check attributes that can't be added, removed, or changed
+  unsigned attrs =
+    NullPointerIsValid
+  ;
+
+  if ((bits & attrs) != (other.bits & attrs))
+    return false;
+
+  return fp_denormal == other.fp_denormal &&
+         fp_denormal32 == other.fp_denormal32;
+}
+
+StateValue FnAttrs::encode(State &s, StateValue &&val, const Type &ty,
+                           const expr &allocsize,
+                           Value *allocalign) const {
   if (has(FnAttrs::NNaN)) {
     assert(ty.isFloatType());
-    new_non_poison &= !val.value.isNaN();
+    val.non_poison &= !val.value.isNaN();
   }
 
   if (ty.isPtrType())
-    encodePtrAttrs(s, val.value, UB, new_non_poison, derefBytes,
-                   derefOrNullBytes, align, has(NonNull), false);
+    val.non_poison &=
+      encodePtrAttrs(s, val.value, derefBytes, derefOrNullBytes, align,
+                     has(NonNull), false, allocsize, allocalign);
 
   if (poisonImpliesUB()) {
-    UB.add(move(new_non_poison));
-    new_non_poison = true;
+    s.addUB(std::move(val.non_poison));
+    val.non_poison = true;
   }
 
-  return { move(UB), move(new_non_poison) };
+  return std::move(val);
 }
 
 
@@ -189,6 +348,44 @@ ostream& operator<<(ostream &os, const FastMathFlags &fm) {
   if (fm.flags & FastMathFlags::AFN)
     os << "afn ";
   return os;
+}
+
+
+smt::expr FpRoundingMode::toSMT() const {
+  switch (mode) {
+  case FpRoundingMode::Dynamic: UNREACHABLE();
+  case FpRoundingMode::RNE:     return expr::rne();
+  case FpRoundingMode::RNA:     return expr::rna();
+  case FpRoundingMode::RTP:     return expr::rtp();
+  case FpRoundingMode::RTN:     return expr::rtn();
+  case FpRoundingMode::RTZ:     return expr::rtz();
+  case FpRoundingMode::Default: UNREACHABLE();
+  }
+  UNREACHABLE();
+}
+
+ostream& operator<<(std::ostream &os, FpRoundingMode rounding) {
+  const char *str = nullptr;
+  switch (rounding.mode) {
+  case FpRoundingMode::Dynamic: str = "dynamic"; break;
+  case FpRoundingMode::RNE:     str = "tonearest"; break;
+  case FpRoundingMode::RNA:     str = "tonearestaway"; break;
+  case FpRoundingMode::RTP:     str = "upward"; break;
+  case FpRoundingMode::RTN:     str = "downward"; break;
+  case FpRoundingMode::RTZ:     str = "towardzero"; break;
+  case FpRoundingMode::Default: UNREACHABLE();
+  }
+  return os << str;
+}
+
+ostream& operator<<(std::ostream &os, FpExceptionMode ex) {
+  const char *str = nullptr;
+  switch (ex.mode) {
+  case FpExceptionMode::Ignore:  str = "ignore"; break;
+  case FpExceptionMode::MayTrap: str = "maytrap"; break;
+  case FpExceptionMode::Strict:  str = "strict"; break;
+  }
+  return os << str;
 }
 
 }

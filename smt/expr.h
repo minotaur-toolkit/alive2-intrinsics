@@ -147,6 +147,7 @@ public:
   bool isFPMul(expr &rounding, expr &lhs, expr &rhs) const;
   bool isFPDiv(expr &rounding, expr &lhs, expr &rhs) const;
   bool isFPNeg(expr &neg) const;
+  bool isIsFPZero() const;
   bool isNaNCheck(expr &fp) const;
   bool isfloat2BV(expr &fp) const;
 
@@ -185,6 +186,12 @@ public:
 
   static expr fshl(const expr &a, const expr &b, const expr &c);
   static expr fshr(const expr &a, const expr &b, const expr &c);
+  static expr smul_fix(const expr &a, const expr &b, const expr &c);
+  static expr smul_fix_no_soverflow(const expr &a, const expr &b, const expr &c);
+  static expr umul_fix(const expr &a, const expr &b, const expr &c);
+  static expr umul_fix_no_uoverflow(const expr &a, const expr &b, const expr &c);
+  static expr smul_fix_sat(const expr &a, const expr &b, const expr &c);
+  static expr umul_fix_sat(const expr &a, const expr &b, const expr &c);
 
   expr shl_no_soverflow(const expr &rhs) const;
   expr shl_no_uoverflow(const expr &rhs) const;
@@ -210,22 +217,28 @@ public:
   expr isFPZero() const;
   expr isFPNegative() const;
   expr isFPNegZero() const;
+  expr isFPNormal() const;
+  expr isFPSubNormal() const;
 
-  expr fadd(const expr &rhs) const;
-  expr fsub(const expr &rhs) const;
-  expr fmul(const expr &rhs) const;
-  expr fdiv(const expr &rhs) const;
+  static expr rne();
+  static expr rna();
+  static expr rtp();
+  static expr rtn();
+  static expr rtz();
+
+  expr fadd(const expr &rhs, const expr &rm) const;
+  expr fsub(const expr &rhs, const expr &rm) const;
+  expr fmul(const expr &rhs, const expr &rm) const;
+  expr fdiv(const expr &rhs, const expr &rm) const;
   expr fabs() const;
   expr fneg() const;
-  expr sqrt() const;
+  expr sqrt(const expr &rm) const;
 
-  static expr fma(const expr &a, const expr &b, const expr &c);
+  static expr fma(const expr &a, const expr &b, const expr &c, const expr &rm);
 
   expr ceil() const;
   expr floor() const;
-  expr roundna() const;
-  expr roundne() const;
-  expr roundtz() const;
+  expr round(const expr &rm) const;
 
   expr foeq(const expr &rhs) const;
   expr fogt(const expr &rhs) const;
@@ -297,12 +310,12 @@ public:
   expr float2BV() const;
   expr float2Real() const;
   expr BV2float(const expr &type) const;
-  expr float2Float(const expr &type) const;
+  expr float2Float(const expr &type, const expr &rm) const;
 
-  expr fp2sint(unsigned bits) const;
-  expr fp2uint(unsigned bits) const;
-  expr sint2fp(const expr &type) const;
-  expr uint2fp(const expr &type) const;
+  expr fp2sint(unsigned bits, const expr &rm) const;
+  expr fp2uint(unsigned bits, const expr &rm) const;
+  expr sint2fp(const expr &type, const expr &rm) const;
+  expr uint2fp(const expr &type, const expr &rm) const;
 
   // we don't expose SMT expr types, so range must be passed as a dummy value
   // of the desired type
@@ -326,6 +339,8 @@ public:
   expr simplify() const;
   expr simplifyNoTimeout() const;
 
+  expr foldTopLevel() const;
+
   // replace v1 -> v2
   expr subst(const std::vector<std::pair<expr, expr>> &repls) const;
   expr subst(const expr &from, const expr &to) const;
@@ -343,6 +358,7 @@ public:
   void printHexadecimal(std::ostream &os) const;
   std::string numeral_string() const;
   std::string fn_name() const; // empty if not a function
+  unsigned getFnNumArgs() const;
   expr getFnArg(unsigned i) const;
   friend std::ostream &operator<<(std::ostream &os, const expr &e);
 
