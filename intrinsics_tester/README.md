@@ -55,16 +55,6 @@ $ ./intrinsics-tester 10000 >results.txt
 Performs 10,000 tests on each intrinsic, and writes the results, including any mismatches, 
 to a file. Note that the progress bar is not written to the file.
 
-## Information for Project Developers
-
-If you add support for any intrinsics in `ir/instr.h`, the tester should be able to function
-properly, but you MUST add some code in exactly one place. In `intrinsics_tester/x86Intrin.cpp`,
-you must add the proper `llvm::Intrinsic::ID` to the end of the list. 
-
-The list is dependent on the ordering of the instructions in `ir/instr.h`.
-This means that you should NOT make changes to the existing list, such as re-ordering existing
-entries, as this will disrupt the tester completely.
-
 AliveTV Bugs Found
 ==================
 

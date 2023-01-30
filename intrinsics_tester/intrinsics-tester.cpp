@@ -45,9 +45,7 @@ int main(int argc, char **argv) {
   auto start = std::chrono::steady_clock::now();
 
   static_for<loopCount>([&](auto index) {
-    if constexpr (index >= 9 && index < 18) // Ignores MMX instructions
-      return;
-    else if (index < lowerBound || index >= upperBound)
+    if (index < lowerBound || index >= upperBound)
       return;
     else // If intrinsic is in range
     {
