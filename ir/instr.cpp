@@ -4898,9 +4898,9 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
         auto [b, bp] = bty->extract(bv, 8 * j + i);
         np = np && ap && bp;
         if (i == 0)
-          v = (a - b).abs().zext(8);
+          v = (a.zext(8) - b.zext(8)).abs();
         else
-          v = v + (a - b).abs().zext(8);
+          v = v + (a.zext(8) - b.zext(8)).abs();
       }
       vals.emplace_back(v.zext(48), move(np));
     }
