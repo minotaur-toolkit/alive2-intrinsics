@@ -5214,7 +5214,10 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
       fn = [&](auto a) -> expr {
         unsigned bw = a.bits() / 2;
         auto max = expr::IntUMax(bw);
-        return expr::mkIf(a.uge(max.zext(bw)), max, a.trunc(bw));
+        auto zero = expr::mkUInt(0, bw);
+        return expr::mkIf(a.sle(zero.zext(bw)), zero,
+                          expr::mkIf(a.sge(max.zext(bw)), max,
+                                     a.trunc(bw)));
       };
     }
 
