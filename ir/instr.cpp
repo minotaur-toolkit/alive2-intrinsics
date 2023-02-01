@@ -4630,6 +4630,14 @@ vector<Value*> FakeShuffle::operands() const {
   return { v1, v2, mask };
 }
 
+bool FakeShuffle::propagatesPoison() const {
+  return false;
+}
+
+bool FakeShuffle::hasSideEffects() const {
+  return false;
+}
+
 void FakeShuffle::rauw(const Value &what, Value &with) {
   RAUW(v1);
   RAUW(v2);
@@ -4678,6 +4686,14 @@ unique_ptr<Instr> FakeShuffle::dup(Function &f, const string &suffix) const {
 
 vector<Value*> X86IntrinBinOp::operands() const {
   return { a, b };
+}
+
+bool X86IntrinBinOp::propagatesPoison() const {
+  return true;
+}
+
+bool X86IntrinBinOp::hasSideEffects() const {
+  return false;
 }
 
 void X86IntrinBinOp::rauw(const Value &what, Value &with) {
