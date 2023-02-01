@@ -187,6 +187,7 @@ if (BUILD_LLVM_UTILS OR BUILD_TV)
   add_definitions(${LLVM_DEFINITIONS})
 
   set(LLVM_UTIL_SRCS
+    "llvm_util/compare.cpp"
     "llvm_util/known_fns.cpp"
     "llvm_util/llvm_optimizer.cpp"
     "llvm_util/llvm2alive.cpp"
@@ -201,8 +202,14 @@ if (BUILD_LLVM_UTILS OR BUILD_TV)
   add_library(llvm_util STATIC ${LLVM_UTIL_SRCS})
   set(ALIVE_LIBS_LLVM llvm_util ${ALIVE_LIBS})
 
+  set(LLVM_LINK_COMPONENTS ${LLVM_LINK_COMPONENTS} TargetParser)
+
   add_llvm_executable(alive-tv
     "tools/alive-tv.cpp"
+  )
+
+  add_llvm_executable(quick-fuzz
+    "tools/quick-fuzz.cpp"
   )
 
   add_llvm_executable(alive-exec
@@ -259,9 +266,10 @@ add_executable(alive-jobserver
 #add_library(alive2 SHARED ${IR_SRCS} ${SMT_SRCS} ${TOOLS_SRCS} ${UTIL_SRCS} ${LLVM_UTIL_SRCS})
 
 if (BUILD_LLVM_UTILS OR BUILD_TV)
-  llvm_map_components_to_libnames(llvm_libs support core irreader analysis passes transformutils)
+  llvm_map_components_to_libnames(llvm_libs support core irreader bitwriter analysis passes transformutils)
 #  target_link_libraries(alive2 PRIVATE ${llvm_libs})
   target_link_libraries(alive-tv PRIVATE ${ALIVE_LIBS_LLVM} ${Z3_LIBRARIES} ${HIREDIS_LIBRARIES} ${llvm_libs})
+  target_link_libraries(quick-fuzz PRIVATE ${ALIVE_LIBS_LLVM} ${Z3_LIBRARIES} ${HIREDIS_LIBRARIES} ${llvm_libs})
   target_link_libraries(alive-exec PRIVATE ${ALIVE_LIBS_LLVM} ${Z3_LIBRARIES} ${HIREDIS_LIBRARIES} ${llvm_libs})
   if (BUILD_INTRINSIC_TESTER)
     llvm_map_components_to_libnames(tester_libs ExecutionEngine orcjit native target jitlink)
@@ -289,5 +297,5 @@ add_custom_target("check"
                  )
 
 if (BUILD_TV)
-  add_dependencies("check" "alive-tv" "tv")
+  add_dependencies("check" "alive-tv" "quick-fuzz" "tv")
 endif()

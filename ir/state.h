@@ -3,6 +3,7 @@
 // Copyright (c) 2018-present The Alive2 Authors.
 // Distributed under the MIT license that can be found in the LICENSE file.
 
+#include "ir/attrs.h"
 #include "ir/memory.h"
 #include "ir/state_value.h"
 #include "smt/expr.h"
@@ -55,10 +56,11 @@ private:
     // Possible number of calls per function name that occurred so far
     // This is an over-approximation, union over all predecessors
     struct FnCallRanges
-      // bool records whether fn only accesses inaccessible/args memory only
-      : public std::map<std::string, std::pair<std::set<unsigned>, bool>> {
-      void inc(const std::string &name, bool inaccessible_or_args_memonly);
-      bool overlaps(const FnCallRanges &other) const;
+      : public std::map<std::string, std::pair<std::set<unsigned>,
+                        MemoryAccess>> {
+      void inc(const std::string &name, MemoryAccess access);
+      bool overlaps(const std::string &callee, MemoryAccess call_access,
+                    const FnCallRanges &other) const;
       // remove all ranges but name
       FnCallRanges project(const std::string &name) const;
     };
@@ -110,6 +112,7 @@ private:
   std::set<std::pair<std::string,std::optional<smt::expr>>> used_approximations;
 
   std::set<smt::expr> quantified_vars;
+  std::set<smt::expr> nondet_vars;
 
   // var -> ((value, not_poison), ub, undef_vars)
   std::unordered_map<const Value*, unsigned> values_map;
@@ -152,15 +155,16 @@ private:
     std::vector<Memory::PtrInput> args_ptr;
     ValueAnalysis::FnCallRanges fncall_ranges;
     Memory m;
-    bool readsmem, argmemonly, inaccessiblememonly, noret, willret;
+    MemoryAccess memaccess;
+    bool noret, willret;
 
     smt::expr operator==(const FnCallInput &rhs) const;
-    smt::expr refinedBy(State &s, unsigned modifies_bid,
+    smt::expr refinedBy(State &s, const std::string &callee,
+                        unsigned inaccessible_bid,
                         const std::vector<StateValue> &args_nonptr,
                         const std::vector<Memory::PtrInput> &args_ptr,
                         const ValueAnalysis::FnCallRanges &fncall_ranges,
-                        const Memory &m, bool readsmem, bool argmemonly,
-                        bool inaccessiblememonly, bool noret,
+                        const Memory &m, MemoryAccess memaccess, bool noret,
                         bool willret) const;
 
     auto operator<=>(const FnCallInput &rhs) const = default;
@@ -194,10 +198,14 @@ public:
 
   /*--- Get values or update registers ---*/
   const ValTy& exec(const Value &v);
-  const StateValue& operator[](const Value &val);
+  const StateValue& eval(const Value &val, bool quantify_nondet);
+  const StateValue& operator[](const Value &val) { return eval(val, false); }
   const StateValue& getAndAddUndefs(const Value &val);
   // If undef_ub is true, UB is also added when val was undef
-  const StateValue& getAndAddPoisonUB(const Value &val, bool undef_ub = false);
+  const StateValue& getAndAddPoisonUB(const Value &val, bool undef_ub = false,
+                                      bool ptr_compare = false);
+  const StateValue& getVal(const Value &val, bool is_poison_ub);
+  const smt::expr& getWellDefinedPtr(const Value &val);
 
   const ValTy& at(const Value &val) const;
   bool isUndef(const smt::expr &e) const;
@@ -207,7 +215,7 @@ public:
   bool startBB(const BasicBlock &bb);
   void addJump(const BasicBlock &dst);
   // boolean cond
-  void addJump(smt::expr &&cond, const BasicBlock &dst);
+  void addJump(smt::expr &&cond, const BasicBlock &dst, bool last_jump = false);
   // i1 cond
   void addCondJump(const smt::expr &cond, const BasicBlock &dst_true,
                    const BasicBlock &dst_false);
@@ -233,6 +241,7 @@ public:
   void doesApproximation(std::string &&name, std::optional<smt::expr> e = {});
   auto& getApproximations() const { return used_approximations; }
 
+  smt::expr getFreshNondetVar(const char *prefix, const smt::expr &type);
   void addQuantVar(const smt::expr &var);
   void addFnQuantVar(const smt::expr &var);
   void addUndefVar(smt::expr &&var);
@@ -256,6 +265,7 @@ public:
   auto& getFnPre() const { return fn_call_pre; }
   const auto& getValues() const { return values; }
   const auto& getQuantVars() const { return quantified_vars; }
+  const auto& getNondetVars() const { return nondet_vars; }
   const auto& getFnQuantVars() const { return fn_call_qvars; }
 
   void saveReturnedInput();
@@ -289,8 +299,8 @@ public:
   void mkAxioms(State &tgt);
 
 private:
-  smt::expr strip_undef_and_add_ub(const Value &val, const smt::expr &e);
-  void addJump(const BasicBlock &dst, smt::expr &&cond, bool last_jump = false);
+  smt::expr strip_undef_and_add_ub(const Value &val, const smt::expr &e,
+                                   bool isptr);
 };
 
 }

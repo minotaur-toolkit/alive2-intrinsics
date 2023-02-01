@@ -75,6 +75,16 @@ Please contact us or submit a PR if something is missing or inaccurate.
 68. SLP vectorizer's reduce_and formation introduces poison (https://llvm.org/PR55734)
 69. IRCE introduces UB by changing order of condition checks (https://llvm.org/PR57523)
 70. LoopIdiomRecognizer creates memset_pattern16 with incorrect size type with custom dl (https://llvm.org/PR57679)
+71. InstSimplify: xor pattern miscompiles undef lane (https://llvm.org/PR58977)
+72. llvm.canonicalize() folding incorrect for denormals (https://llvm.org/PR59245)
+73. InstCombine: incorrect fabs formation (https://llvm.org/PR59279)
+74. InstCombine: incorrect select + fast-math swap (https://llvm.org/PR59451)
+75. SCEV expander introduces poison when hoisting IV (https://llvm.org/PR59777)
+76. InstCombine: incorrect overflow check simplification (https://llvm.org/PR59836)
+77. Loop reroll creates incorrect IV increment (https://llvm.org/PR59841)
+78. InstCombine: incorrect transformation of smul_overflow with i1 (https://llvm.org/PR59876)
+79. CVP: incorrect transformation of abs (https://llvm.org/PR59887)
+80. InstCombine generates incorrect range metadata for ctpop (https://llvm.org/PR59888)
 
 
 ### Bugs found in Z3
@@ -93,3 +103,5 @@ Please contact us or submit a PR if something is missing or inaccurate.
 13. SMT internalize doesn't respect the timeout (https://github.com/Z3Prover/z3/issues/4192)
 14. Unsoundness with smt.bv.size_reduce=true (https://github.com/Z3Prover/z3/issues/6314)
 15. Incorrect sort after lambda rewrite (https://github.com/Z3Prover/z3/issues/6340)
+16. Incorrect BV rewrite (https://github.com/Z3Prover/z3/issues/6426)
+17. Crash with FP<->BV conversions (https://github.com/Z3Prover/z3/issues/6460)

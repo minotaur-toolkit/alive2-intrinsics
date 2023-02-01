@@ -11,7 +11,11 @@
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Operator.h"
+#include "llvm/IRReader/IRReader.h"
+#include "llvm/Support/Error.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/SourceMgr.h"
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -24,7 +28,7 @@ namespace {
 
 // cache Value*'s names
 unordered_map<const llvm::Value*, string> value_names;
-unsigned value_id_counter; // for %0, %1, etc..
+unsigned value_id_counter = 0; // for %0, %1, etc..
 
 vector<unique_ptr<IntType>> int_types;
 vector<unique_ptr<PtrType>> ptr_types;
@@ -101,10 +105,6 @@ string value_name(const llvm::Value &v) {
                                         : '%' + to_string(value_id_counter++);
 }
 
-void remove_value_name(const llvm::Value &v) {
-  value_names.erase(&v);
-}
-
 Type& get_int_type(unsigned bits) {
   if (bits >= int_types.size())
     int_types.resize(bits + 1);
@@ -144,11 +144,16 @@ Type* llvm_type2alive(const llvm::Type *ty) {
     return ptr_types[as].get();
   }
   case llvm::Type::StructTyID: {
+    auto strty = cast<llvm::StructType>(ty);
+    // 8 bits should be plenty to represent all unique values of this type
+    // in the program
+    if (strty->isOpaque())
+      return &get_int_type(8);
+
     auto &cache = type_cache[ty];
     if (!cache) {
       vector<Type*> elems;
       vector<bool> is_padding;
-      auto strty = cast<llvm::StructType>(ty);
       auto layout = DL->getStructLayout(const_cast<llvm::StructType *>(strty));
       for (unsigned i = 0; i < strty->getNumElements(); ++i) {
         auto e = strty->getElementType(i);
@@ -263,24 +268,10 @@ Value* get_operand(llvm::Value *v,
 
   if (auto cnst = dyn_cast<llvm::ConstantFP>(v)) {
     auto &apfloat = cnst->getValueAPF();
-    unique_ptr<FloatConst> c;
-    switch (ty->getAsFloatType()->getFpType()) {
-    case FloatType::Float:
-    case FloatType::BFloat:
-      c = make_unique<FloatConst>(*ty, apfloat.convertToFloat());
-      break;
-    case FloatType::Double:
-      c = make_unique<FloatConst>(*ty, apfloat.convertToDouble());
-      break;
-    case FloatType::Half:
-    case FloatType::Quad:
-      c = make_unique<FloatConst>(*ty,
-                                  toString(apfloat.bitcastToAPInt(), 10, false),
-                                  true);
-      break;
-    case FloatType::Unknown:
-      UNREACHABLE();
-    }
+    auto c
+     = make_unique<FloatConst>(*ty,
+                               toString(apfloat.bitcastToAPInt(), 10, false),
+                               true);
     auto ret = c.get();
     current_fn->addConstant(std::move(c));
     RETURN_CACHE(ret);
@@ -401,12 +392,25 @@ Value* get_operand(llvm::Value *v,
     return constexpr_conv(cexpr);
   }
 
+  // This must be an operand of an unreachable instruction as the operand
+  // hasn't been seen yet
+  if (isa<llvm::Instruction>(v)) {
+    auto val = make_unique<PoisonValue>(*ty);
+    auto ret = val.get();
+    current_fn->addConstant(std::move(val));
+    return ret;
+  }
+
   return nullptr;
 }
 
 
 void add_identifier(const llvm::Value &llvm, Value &v) {
   value_cache.emplace(&llvm, &v);
+}
+
+void replace_identifier(const llvm::Value &llvm, Value &v) {
+  value_cache[&llvm] =  &v;
 }
 
 
@@ -439,11 +443,43 @@ void set_outs(ostream &os) {
   out = &os;
 }
 
-void reset_state(Function &f) {
-  current_fn = &f;
+void reset_state() {
   value_cache.clear();
   value_names.clear();
   value_id_counter = 0;
+}
+
+void reset_state(Function &f) {
+  current_fn = &f;
+}
+
+static llvm::ExitOnError ExitOnErr;
+
+// adapted from llvm-dis.cpp
+std::unique_ptr<llvm::Module> openInputFile(llvm::LLVMContext &Context,
+                                            const string &InputFilename) {
+  auto MB =
+    ExitOnErr(errorOrToExpected(llvm::MemoryBuffer::getFile(InputFilename)));
+  llvm::SMDiagnostic Diag;
+  auto M = getLazyIRModule(std::move(MB), Diag, Context,
+                           /*ShouldLazyLoadMetadata=*/true);
+  if (!M) {
+    Diag.print("", llvm::errs(), false);
+    return 0;
+  }
+  ExitOnErr(M->materializeAll());
+  return M;
+}
+
+llvm::Function *findFunction(llvm::Module &M, const string &FName) {
+  for (auto &F : M) {
+    if (F.isDeclaration())
+      continue;
+    if (FName.compare(F.getName()) != 0)
+      continue;
+    return &F;
+  }
+  return nullptr;
 }
 
 }

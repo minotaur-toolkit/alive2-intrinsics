@@ -99,11 +99,6 @@ uint64_t getGlobalVarSize(const IR::Value *V) {
 
 namespace IR {
 
-bool Instr::propagatesPoison() const {
-  // be on the safe side
-  return false;
-}
-
 expr Instr::getTypeConstraints() const {
   UNREACHABLE();
   return {};
@@ -127,7 +122,7 @@ BinOp::BinOp(Type &type, string &&name, Value &lhs, Value &rhs, Op op,
     assert((flags & Exact) == flags);
     break;
   default:
-    assert(flags == None);
+    assert((flags & NoUndef) == flags);
     break;
   }
 }
@@ -138,6 +133,10 @@ vector<Value*> BinOp::operands() const {
 
 bool BinOp::propagatesPoison() const {
   return true;
+}
+
+bool BinOp::hasSideEffects() const {
+  return isDivOrRem() || (flags & NoUndef);
 }
 
 void BinOp::rauw(const Value &what, Value &with) {
@@ -191,6 +190,8 @@ void BinOp::print(ostream &os) const {
   if (flags & Exact)
     os << "exact ";
   os << *lhs << ", " << rhs->getName();
+  if (flags & NoUndef)
+    os << ", !noundef";
 }
 
 static void div_ub(State &s, const expr &a, const expr &b, const expr &ap,
@@ -448,24 +449,33 @@ StateValue BinOp::toSMT(State &s) const {
     break;
   }
 
+  bool noundef = flags & NoUndef;
   function<pair<StateValue,StateValue>(const expr&, const expr&, const expr&,
                                        const expr&)> zip_op;
   if (vertical_zip) {
     zip_op = [&](auto &a, auto &ap, auto &b, auto &bp) {
       auto [v1, v2] = fn(a, ap, b, bp);
       expr non_poison = ap && bp;
+      if (noundef) {
+        s.addUB(std::move(non_poison));
+        non_poison = true;
+      }
       StateValue sv1(std::move(v1), expr(non_poison));
       return make_pair(std::move(sv1), StateValue(std::move(v2), std::move(non_poison)));
     };
   } else {
     scalar_op = [&](auto &a, auto &ap, auto &b, auto &bp) -> StateValue {
       auto [v, np] = fn(a, ap, b, bp);
+      if (noundef) {
+        s.addUB(std::move(np));
+        np = true;
+      }
       return { std::move(v), ap && bp && np };
     };
   }
 
-  auto &a = s[*lhs];
-  auto &b = isDivOrRem() ? s.getAndAddPoisonUB(*rhs) : s[*rhs];
+  auto &a = s.getVal(*lhs, noundef);
+  auto &b = s.getVal(*rhs, isDivOrRem() || noundef);
 
   if (lhs->getType().isVectorType()) {
     auto retty = getType().getAsAggregateType();
@@ -583,6 +593,10 @@ bool FpBinOp::propagatesPoison() const {
   return true;
 }
 
+bool FpBinOp::hasSideEffects() const {
+  return false;
+}
+
 void FpBinOp::rauw(const Value &what, Value &with) {
   RAUW(lhs);
   RAUW(rhs);
@@ -605,7 +619,8 @@ void FpBinOp::print(ostream &os) const {
   os << getName() << " = " << str << fmath << *lhs << ", " << rhs->getName();
   if (!rm.isDefault())
     os << ", rounding=" << rm;
-  os << ", exceptions=" << ex;
+  if (!ex.ignore())
+    os << ", exceptions=" << ex;
 }
 
 static expr any_fp_zero(State &s, const expr &v) {
@@ -624,8 +639,7 @@ static expr any_fp_zero(State &s, const expr &v) {
     }
   }
 
-  expr var = expr::mkFreshVar("anyzero", true);
-  s.addQuantVar(var);
+  expr var = s.getFreshNondetVar("anyzero", true);
   return expr::mkIf(var && is_zero, v.fneg(), v);
 }
 
@@ -647,38 +661,32 @@ static expr handle_subnormal(FPDenormalAttrs::Type attr, expr &&v) {
   return std::move(v);
 }
 
-static StateValue fm_poison(State &s, const expr &a, const expr &ap,
-                            const expr &b, const expr &bp, const expr &c,
-                            const expr &cp,
-                            function<expr(expr&,expr&,expr&)> fn,
+template <typename T>
+static T round_value(const State &s, FpRoundingMode rm, AndExpr &non_poison,
+                     const function<T(FpRoundingMode)> &fn) {
+  if (rm.isDefault())
+    return fn(FpRoundingMode::RNE);
+
+  auto &var = s.getFpRoundingMode();
+  if (!rm.isDynamic()) {
+    non_poison.add(var == rm.getMode());
+    return fn(rm);
+  }
+
+  return T::mkIf(var == FpRoundingMode::RNE, fn(FpRoundingMode::RNE),
+         T::mkIf(var == FpRoundingMode::RNA, fn(FpRoundingMode::RNA),
+         T::mkIf(var == FpRoundingMode::RTP, fn(FpRoundingMode::RTP),
+         T::mkIf(var == FpRoundingMode::RTN, fn(FpRoundingMode::RTN),
+                 fn(FpRoundingMode::RTZ)))));
+}
+
+static StateValue fm_poison(State &s, expr a, const expr &ap, expr b,
+                            const expr &bp, expr c, const expr &cp,
+                            function<expr(const expr&, const expr&,
+                                          const expr&, FpRoundingMode)> fn,
                             const Type &ty, FastMathFlags fmath,
-                            bool only_input = false,
-                            bool flush_denormal = true,
-                            int nary = 3) {
-  expr new_a, new_b, new_c;
-  if (fmath.flags & FastMathFlags::NSZ) {
-    new_a = any_fp_zero(s, a);
-    if (nary >= 2) {
-      new_b = any_fp_zero(s, b);
-      if (nary == 3)
-        new_c = any_fp_zero(s, c);
-    }
-  } else {
-    new_a = a;
-    new_b = b;
-    new_c = c;
-  }
-
-  if (flush_denormal) {
-    auto fpdenormal = s.getFn().getFnAttrs().getFPDenormal(ty).input;
-    new_a = handle_subnormal(fpdenormal, std::move(new_a));
-    if (nary >= 2)
-      new_b = handle_subnormal(fpdenormal, std::move(new_b));
-    if (nary >= 3)
-      new_c = handle_subnormal(fpdenormal, std::move(new_c));
-  }
-
-  expr val = fn(new_a, new_b, new_c);
+                            FpRoundingMode rm, bool bitwise,
+                            bool flags_in_only = false, int nary = 3) {
   AndExpr non_poison;
   non_poison.add(ap);
   if (nary >= 2)
@@ -686,24 +694,50 @@ static StateValue fm_poison(State &s, const expr &a, const expr &ap,
   if (nary >= 3)
     non_poison.add(cp);
 
-  if (fmath.flags & FastMathFlags::NNaN) {
-    non_poison.add(!a.isNaN());
+  if (!ty.isFloatType())
+    return { fn(a, b, c, {}), non_poison() };
+
+  if (fmath.flags & FastMathFlags::NSZ) {
+    a = any_fp_zero(s, a);
     if (nary >= 2) {
-      non_poison.add(!b.isNaN());
+      b = any_fp_zero(s, b);
       if (nary == 3)
-        non_poison.add(!c.isNaN());
+        c = any_fp_zero(s, c);
     }
-    if (!only_input)
+  }
+
+  auto fpty = ty.getAsFloatType();
+  expr fp_a = fpty->getFloat(a);
+  expr fp_b = fpty->getFloat(b);
+  expr fp_c = fpty->getFloat(c);
+
+  if (!bitwise) {
+    auto fpdenormal = s.getFn().getFnAttrs().getFPDenormal(ty).input;
+    fp_a = handle_subnormal(fpdenormal, std::move(fp_a));
+    fp_b = handle_subnormal(fpdenormal, std::move(fp_b));
+    fp_c = handle_subnormal(fpdenormal, std::move(fp_c));
+  }
+
+  function<expr(FpRoundingMode)> fn_rm
+    = [&](auto rm) { return fn(fp_a, fp_b, fp_c, rm); };
+  expr val = bitwise ? fn(a, b, c, {}) : round_value(s, rm, non_poison, fn_rm);
+
+  if (fmath.flags & FastMathFlags::NNaN) {
+    non_poison.add(!fp_a.isNaN());
+    if (nary >= 2)
+      non_poison.add(!fp_b.isNaN());
+    if (nary >= 3)
+      non_poison.add(!fp_c.isNaN());
+    if (!flags_in_only && val.isFloat())
       non_poison.add(!val.isNaN());
   }
   if (fmath.flags & FastMathFlags::NInf) {
-    non_poison.add(!a.isInf());
-    if (nary >= 2) {
-      non_poison.add(!b.isInf());
-      if (nary == 3)
-        non_poison.add(!c.isInf());
-    }
-    if (!only_input)
+    non_poison.add(!fp_a.isInf());
+    if (nary >= 2)
+      non_poison.add(!fp_b.isInf());
+    if (nary >= 3)
+      non_poison.add(!fp_c.isInf());
+    if (!flags_in_only && val.isFloat())
       non_poison.add(!val.isInf());
   }
   if (fmath.flags & FastMathFlags::ARCP) {
@@ -722,64 +756,44 @@ static StateValue fm_poison(State &s, const expr &a, const expr &ap,
     val = expr::mkUF("afn", { val }, val);
     s.doesApproximation("afn", val);
   }
-  if (fmath.flags & FastMathFlags::NSZ && !only_input)
+  if (!flags_in_only && fmath.flags & FastMathFlags::NSZ)
     val = any_fp_zero(s, std::move(val));
+
+  if (!bitwise && val.isFloat()) {
+    val = handle_subnormal(s.getFn().getFnAttrs().getFPDenormal(ty).output,
+                           std::move(val));
+    val = fpty->fromFloat(s, val);
+  }
 
   return { std::move(val), non_poison() };
 }
 
-static StateValue fm_poison(State &s, const expr &a, const expr &ap,
-                            const expr &b, const expr &bp,
-                            function<expr(expr&,expr&)> fn,
+static StateValue fm_poison(State &s, expr a, const expr &ap, expr b,
+                            const expr &bp,
+                            function<expr(const expr&, const expr&,
+                                          FpRoundingMode)> fn,
                             const Type &ty, FastMathFlags fmath,
-                            bool only_input = false,
-                            bool flush_denormal = true) {
-  return fm_poison(s, a, ap, std::move(b), bp, expr(), expr(),
-                   [&](expr &a, expr &b, expr &c) { return fn(a, b); },
-                   ty, fmath, only_input, flush_denormal, 2);
+                            FpRoundingMode rm, bool bitwise,
+                            bool flags_in_only = false) {
+  return fm_poison(s, std::move(a), ap, std::move(b), bp, expr(), expr(),
+                   [fn](auto &a, auto &b, auto &c, auto rm) {
+                    return fn(a, b, rm);
+                   }, ty, fmath, rm, bitwise, flags_in_only, 2);
 }
 
-static StateValue fm_poison(State &s, const expr &a, const expr &ap,
-                            function<expr(expr&)> fn, const Type &ty,
-                            FastMathFlags fmath, bool only_input = false,
-                            bool flush_denormal = true) {
-  return fm_poison(s, a, ap, expr(), expr(), expr(), expr(),
-                   [&](expr &a, expr &b, expr &c) { return fn(a); },
-                   ty, fmath, only_input, flush_denormal, 1);
-}
-
-static StateValue round_value_(const function<StateValue(FpRoundingMode)> &fn,
-                               const State &s, FpRoundingMode rm) {
-  if (rm.isDefault())
-    return fn(FpRoundingMode::RNE);
-
-  auto &var = s.getFpRoundingMode();
-  if (!rm.isDynamic()) {
-    auto [v, np] = fn(rm);
-    return { std::move(v), np && var == rm.getMode() };
-  }
-
-  return StateValue::mkIf(var == FpRoundingMode::RNE, fn(FpRoundingMode::RNE),
-         StateValue::mkIf(var == FpRoundingMode::RNA, fn(FpRoundingMode::RNA),
-         StateValue::mkIf(var == FpRoundingMode::RTP, fn(FpRoundingMode::RTP),
-         StateValue::mkIf(var == FpRoundingMode::RTN, fn(FpRoundingMode::RTN),
-                          fn(FpRoundingMode::RTZ)))));
-}
-
-static StateValue round_value(const function<StateValue(FpRoundingMode)> &fn,
-                              const State &s, const Type &ty,
-                              FpRoundingMode rm,
-                              bool enable_subnormal_flush = true) {
-  auto [v, np] = round_value_(fn, s, rm);
-  if (enable_subnormal_flush)
-    v = handle_subnormal(s.getFn().getFnAttrs().getFPDenormal(ty).output,
-                         std::move(v));
-  return { std::move(v), std::move(np) };
+static StateValue fm_poison(State &s, expr a, const expr &ap,
+                            function<expr(const expr&, FpRoundingMode)> fn,
+                            const Type &ty, FastMathFlags fmath,
+                            FpRoundingMode rm, bool bitwise,
+                            bool flags_in_only = false) {
+  return fm_poison(s, std::move(a), ap, expr(), expr(), expr(), expr(),
+                   [fn](auto &a, auto &b, auto &c, auto rm) {return fn(a, rm);},
+                   ty, fmath, rm, bitwise, flags_in_only, 1);
 }
 
 StateValue FpBinOp::toSMT(State &s) const {
   function<expr(const expr&, const expr&, FpRoundingMode)> fn;
-  bool flush_denormal = true;
+  bool bitwise = false;
 
   switch (op) {
   case FAdd:
@@ -818,8 +832,7 @@ StateValue FpBinOp::toSMT(State &s) const {
   case FMin:
   case FMax:
     fn = [&](const expr &a, const expr &b, FpRoundingMode rm) {
-      expr ndet = expr::mkFreshVar("maxminnondet", true);
-      s.addQuantVar(ndet);
+      expr ndet = s.getFreshNondetVar("maxminnondet", true);
       auto ndz = expr::mkIf(ndet, expr::mkNumber("0", a),
                             expr::mkNumber("-0", a));
 
@@ -846,20 +859,19 @@ StateValue FpBinOp::toSMT(State &s) const {
       return expr::mkIf(a.isNaN(), a, expr::mkIf(b.isNaN(), b, e));
     };
     break;
+
   case CopySign:
-    flush_denormal = false;
+    bitwise = true;
     fn = [](const expr &a, const expr &b, FpRoundingMode rm) {
-      return expr::mkIf(a.isFPNegative() == b.isFPNegative(), a, a.fneg());
+      return a.copysign(b);
     };
     break;
   }
 
   auto scalar = [&](const auto &a, const auto &b, const Type &ty) {
-    return round_value([&](auto rm) {
-      return fm_poison(s, a.value, a.non_poison, b.value, b.non_poison,
-                       [&](expr &a, expr &b){ return fn(a, b, rm); }, ty,
-                       fmath, !flush_denormal, flush_denormal);
-    }, s, ty, rm, flush_denormal);
+    return fm_poison(s, a.value, a.non_poison, b.value, b.non_poison,
+                     [&](auto &a, auto &b, auto rm){ return fn(a, b, rm); },
+                     ty, fmath, rm, bitwise);
   };
 
   auto &a = s[*lhs];
@@ -896,6 +908,10 @@ vector<Value*> UnaryOp::operands() const {
 
 bool UnaryOp::propagatesPoison() const {
   return true;
+}
+
+bool UnaryOp::hasSideEffects() const {
+  return false;
 }
 
 void UnaryOp::rauw(const Value &what, Value &with) {
@@ -949,9 +965,7 @@ StateValue UnaryOp::toSMT(State &s) const {
       return { std::move(one), true };
 
     // may or may not be a constant
-    expr var = expr::mkFreshVar("is.const", one);
-    s.addQuantVar(var);
-    return { std::move(var), true };
+    return { s.getFreshNondetVar("is.const", one), true };
   }
   case FFS:
     fn = [](auto &v, auto np) -> StateValue {
@@ -1030,6 +1044,10 @@ bool FpUnaryOp::propagatesPoison() const {
   return true;
 }
 
+bool FpUnaryOp::hasSideEffects() const {
+  return false;
+}
+
 void FpUnaryOp::rauw(const Value &what, Value &with) {
   RAUW(val);
 }
@@ -1037,36 +1055,41 @@ void FpUnaryOp::rauw(const Value &what, Value &with) {
 void FpUnaryOp::print(ostream &os) const {
   const char *str = nullptr;
   switch (op) {
-  case FAbs:      str = "fabs "; break;
-  case FNeg:      str = "fneg "; break;
-  case Ceil:      str = "ceil "; break;
-  case Floor:     str = "floor "; break;
-  case RInt:      str = "rint "; break;
-  case NearbyInt: str = "nearbyint "; break;
-  case Round:     str = "round "; break;
-  case RoundEven: str = "roundeven "; break;
-  case Trunc:     str = "trunc "; break;
-  case Sqrt:      str = "sqrt "; break;
+  case FAbs:         str = "fabs "; break;
+  case FNeg:         str = "fneg "; break;
+  case Canonicalize: str = "canonicalize "; break;
+  case Ceil:         str = "ceil "; break;
+  case Floor:        str = "floor "; break;
+  case RInt:         str = "rint "; break;
+  case NearbyInt:    str = "nearbyint "; break;
+  case Round:        str = "round "; break;
+  case RoundEven:    str = "roundeven "; break;
+  case Trunc:        str = "trunc "; break;
+  case Sqrt:         str = "sqrt "; break;
   }
 
   os << getName() << " = " << str << fmath << *val;
   if (!rm.isDefault())
     os << ", rounding=" << rm;
-  os << ", exceptions=" << ex;
+  if (!ex.ignore())
+    os << ", exceptions=" << ex;
 }
 
 StateValue FpUnaryOp::toSMT(State &s) const {
-  expr (*fn)(const expr&, FpRoundingMode);
-  bool flush_denormal = true;
+  expr (*fn)(const expr&, FpRoundingMode) = nullptr;
+  bool bitwise = false;
 
   switch (op) {
   case FAbs:
-    flush_denormal = false;
+    bitwise = true;
     fn = [](const expr &v, FpRoundingMode rm) { return v.fabs(); };
     break;
   case FNeg:
-    flush_denormal = false;
-    fn = [](const expr &v, FpRoundingMode rm){ return v.fneg(); };
+    bitwise = true;
+    fn = [](const expr &v, FpRoundingMode rm) { return v.fneg(); };
+    break;
+  case Canonicalize:
+    fn = [](const expr &v, FpRoundingMode rm) { return v; };
     break;
   case Ceil:
     fn = [](const expr &v, FpRoundingMode rm) { return v.ceil(); };
@@ -1094,12 +1117,9 @@ StateValue FpUnaryOp::toSMT(State &s) const {
   }
 
   auto scalar = [&](const StateValue &v, const Type &ty) {
-    return
-      round_value([&](auto rm) {
-        return fm_poison(s, v.value, v.non_poison,
-                         [&](expr &v){ return fn(v, rm); }, ty, fmath,
-                         !flush_denormal, flush_denormal);
-      },  s, ty, rm, flush_denormal);
+    return fm_poison(s, v.value, v.non_poison,
+                     [fn](auto &v, auto rm){ return fn(v, rm); }, ty, fmath, rm,
+                     bitwise, false);
   };
 
   auto &v = s[*val];
@@ -1133,6 +1153,10 @@ vector<Value*> UnaryReductionOp::operands() const {
 
 bool UnaryReductionOp::propagatesPoison() const {
   return true;
+}
+
+bool UnaryReductionOp::hasSideEffects() const {
+  return false;
 }
 
 void UnaryReductionOp::rauw(const Value &what, Value &with) {
@@ -1203,6 +1227,10 @@ vector<Value*> TernaryOp::operands() const {
 
 bool TernaryOp::propagatesPoison() const {
   return true;
+}
+
+bool TernaryOp::hasSideEffects() const {
+  return false;
 }
 
 void TernaryOp::rauw(const Value &what, Value &with) {
@@ -1320,6 +1348,10 @@ bool FpTernaryOp::propagatesPoison() const {
   return true;
 }
 
+bool FpTernaryOp::hasSideEffects() const {
+  return false;
+}
+
 void FpTernaryOp::rauw(const Value &what, Value &with) {
   RAUW(a);
   RAUW(b);
@@ -1336,7 +1368,8 @@ void FpTernaryOp::print(ostream &os) const {
   os << getName() << " = " << str << fmath << *a << ", " << *b << ", " << *c;
   if (!rm.isDefault())
     os << ", rounding=" << rm;
-  os << ", exceptions=" << ex;
+  if (!ex.ignore())
+    os << ", exceptions=" << ex;
 }
 
 StateValue FpTernaryOp::toSMT(State &s) const {
@@ -1351,8 +1384,7 @@ StateValue FpTernaryOp::toSMT(State &s) const {
   case MulAdd:
     fn = [&](const expr &a, const expr &b, const expr &c, FpRoundingMode rm0) {
       auto rm = rm0.toSMT();
-      expr var = expr::mkFreshVar("nondet", expr(false));
-      s.addQuantVar(var);
+      expr var = s.getFreshNondetVar("nondet", expr(false));
       return expr::mkIf(var, expr::fma(a, b, c, rm), a.fmul(b, rm).fadd(c, rm));
     };
     break;
@@ -1360,12 +1392,8 @@ StateValue FpTernaryOp::toSMT(State &s) const {
 
   auto scalar = [&](const StateValue &a, const StateValue &b,
                     const StateValue &c, const Type &ty) {
-    return round_value([&](auto rm) {
-      return fm_poison(s, a.value, a.non_poison, b.value, b.non_poison,
-                       c.value, c.non_poison,
-                       [&](expr &a, expr &b, expr &c){ return fn(a, b, c, rm);},
-                       ty, fmath);
-    }, s, ty, rm);
+    return fm_poison(s, a.value, a.non_poison, b.value, b.non_poison,
+                     c.value, c.non_poison, fn, ty, fmath, rm, false);
   };
 
   auto &av = s[*a];
@@ -1407,6 +1435,10 @@ bool TestOp::propagatesPoison() const {
   return true;
 }
 
+bool TestOp::hasSideEffects() const {
+  return false;
+}
+
 void TestOp::rauw(const Value &what, Value &with) {
   RAUW(lhs);
   RAUW(rhs);
@@ -1424,22 +1456,20 @@ void TestOp::print(ostream &os) const {
 StateValue TestOp::toSMT(State &s) const {
   auto &a = s[*lhs];
   auto &b = s[*rhs];
-  function<expr(const expr&)> fn;
+  function<expr(const expr&, const Type&)> fn;
 
   switch (op) {
   case Is_FPClass:
-    fn = [&](const expr &a) -> expr {
+    fn = [&](const expr &v, const Type &ty) -> expr {
       uint64_t n;
-      if (!b.value.isUInt(n) || !b.non_poison.isTrue()) {
-        s.addUB(expr(false));
-        return {};
-      }
+      ENSURE(b.value.isUInt(n) && b.non_poison.isTrue());
+      auto *fpty = ty.getAsFloatType();
+      auto a = fpty->getFloat(v);
       OrExpr result;
-      // TODO: distinguish between quiet and signaling NaNs
       if (n & (1 << 0))
-        result.add(a.isNaN());
+        result.add(fpty->isNaN(v, true));
       if (n & (1 << 1))
-        result.add(a.isNaN());
+        result.add(fpty->isNaN(v, false));
       if (n & (1 << 2))
         result.add(a.isFPNegative() && a.isInf());
       if (n & (1 << 3))
@@ -1461,8 +1491,8 @@ StateValue TestOp::toSMT(State &s) const {
     break;
   }
 
-  auto scalar = [&](const StateValue &v) -> StateValue {
-    return { fn(v.value), expr(v.non_poison) };
+  auto scalar = [&](const StateValue &v, const Type &ty) -> StateValue {
+    return { fn(v.value, ty), expr(v.non_poison) };
   };
 
   if (getType().isVectorType()) {
@@ -1470,11 +1500,11 @@ StateValue TestOp::toSMT(State &s) const {
     auto ty = lhs->getType().getAsAggregateType();
 
     for (unsigned i = 0, e = ty->numElementsConst(); i != e; ++i) {
-      vals.emplace_back(scalar(ty->extract(a, i)));
+      vals.emplace_back(scalar(ty->extract(a, i), ty->getChild(i)));
     }
     return getType().getAsAggregateType()->aggregateVals(vals);
   }
-  return scalar(a);
+  return scalar(a, lhs->getType());
 }
 
 expr TestOp::getTypeConstraints(const Function &f) const {
@@ -1496,6 +1526,10 @@ vector<Value*> ConversionOp::operands() const {
 
 bool ConversionOp::propagatesPoison() const {
   return true;
+}
+
+bool ConversionOp::hasSideEffects() const {
+  return false;
 }
 
 void ConversionOp::rauw(const Value &what, Value &with) {
@@ -1639,6 +1673,10 @@ bool FpConversionOp::propagatesPoison() const {
   return true;
 }
 
+bool FpConversionOp::hasSideEffects() const {
+  return flags & NoUndef;
+}
+
 void FpConversionOp::rauw(const Value &what, Value &with) {
   RAUW(val);
 }
@@ -1659,24 +1697,28 @@ void FpConversionOp::print(ostream &os) const {
   os << getName() << " = " << str << *val << print_type(getType(), " to ", "");
   if (!rm.isDefault())
     os << ", rounding=" << rm;
-  os << ", exceptions=" << ex;
+  if (!ex.ignore())
+    os << ", exceptions=" << ex;
+  if (flags & NoUndef)
+    os << ", !noundef";
 }
 
 StateValue FpConversionOp::toSMT(State &s) const {
-  auto &v = s[*val];
+  bool noundef = flags & NoUndef;
+  auto &v = s.getVal(*val, noundef);
   function<StateValue(const expr &, const Type &, FpRoundingMode)> fn;
 
   switch (op) {
   case SIntToFP:
     fn = [](auto &val, auto &to_type, auto rm) -> StateValue {
-      return
-        { val.sint2fp(to_type.getDummyValue(false).value, rm.toSMT()), true };
+      return { val.sint2fp(to_type.getAsFloatType()->getDummyFloat(),
+                           rm.toSMT()), true };
     };
     break;
   case UIntToFP:
     fn = [](auto &val, auto &to_type, auto rm) -> StateValue {
-      return
-        { val.uint2fp(to_type.getDummyValue(false).value, rm.toSMT()), true };
+      return { val.uint2fp(to_type.getAsFloatType()->getDummyFloat(),
+                           rm.toSMT()), true };
     };
     break;
   case FPToSInt:
@@ -1684,9 +1726,11 @@ StateValue FpConversionOp::toSMT(State &s) const {
   case LRound:
     fn = [&](auto &val, auto &to_type, auto rm_in) -> StateValue {
       expr rm;
+      bool is_poison = false;
       switch (op) {
       case FPToSInt:
         rm = expr::rtz();
+        is_poison = true;
         break;
       case LRInt:
         rm = rm_in.toSMT();
@@ -1700,7 +1744,17 @@ StateValue FpConversionOp::toSMT(State &s) const {
       expr fp2 = bv.sint2fp(val, rm);
       // -0.xx is converted to 0 and then to 0.0, though -0.xx is ok to convert
       expr val_rounded = val.round(rm);
-      return { std::move(bv), val_rounded.isFPZero() || fp2 == val_rounded };
+      expr overflow = val_rounded.isFPZero() || fp2 == val_rounded;
+
+      expr np;
+      if (is_poison) {
+        np = std::move(overflow);
+      } else {
+        np = true;
+        bv = expr::mkIf(overflow, s.getFreshNondetVar("nondet", bv), bv);
+      }
+
+      return { std::move(bv), std::move(np) };
     };
     break;
   case FPToUInt:
@@ -1716,17 +1770,35 @@ StateValue FpConversionOp::toSMT(State &s) const {
   case FPExt:
   case FPTrunc:
     fn = [](auto &val, auto &to_type, auto rm) -> StateValue {
-      return { val.float2Float(to_type.getDummyValue(false).value, rm.toSMT()),
-               true };
+      return { val.float2Float(to_type.getAsFloatType()->getDummyFloat(),
+                               rm.toSMT()), true };
     };
     break;
   }
 
-  auto scalar = [&](const StateValue &sv, const Type &to_type) -> StateValue {
-    auto [v, np]
-      = round_value([&](auto rm) { return fn(sv.value, to_type, rm); }, s,
-                    to_type, rm);
-    return { std::move(v), sv.non_poison && np };
+  auto scalar = [&](const StateValue &sv, const Type &from_type,
+                    const Type &to_type) -> StateValue {
+    auto val = sv.value;
+    if (from_type.isFloatType())
+      val = from_type.getAsFloatType()->getFloat(val);
+
+    function<StateValue(FpRoundingMode)> fn_rm
+      = [&](auto rm) { return fn(val, to_type, rm); };
+    AndExpr np;
+    np.add(sv.non_poison);
+
+    StateValue ret = to_type.isFloatType() ? round_value(s, rm, np, fn_rm)
+                                           : fn(val, to_type, rm);
+    np.add(std::move(ret.non_poison));
+
+    if (noundef) {
+      s.addUB(np());
+      np.reset();
+    }
+
+    return { to_type.isFloatType()
+               ? to_type.getAsFloatType()->fromFloat(s, ret.value)
+               : std::move(ret.value), np()};
   };
 
   if (getType().isVectorType()) {
@@ -1735,11 +1807,12 @@ StateValue FpConversionOp::toSMT(State &s) const {
     auto retty = getType().getAsAggregateType();
 
     for (unsigned i = 0, e = ty->numElementsConst(); i != e; ++i) {
-      vals.emplace_back(scalar(ty->extract(v, i), retty->getChild(i)));
+      vals.emplace_back(scalar(ty->extract(v, i), ty->getChild(i),
+                               retty->getChild(i)));
     }
     return retty->aggregateVals(vals);
   }
-  return scalar(v, getType());
+  return scalar(v, val->getType(), getType());
 }
 
 expr FpConversionOp::getTypeConstraints(const Function &f) const {
@@ -1781,6 +1854,14 @@ vector<Value*> Select::operands() const {
   return { cond, a, b };
 }
 
+bool Select::propagatesPoison() const {
+  return false;
+}
+
+bool Select::hasSideEffects() const {
+  return false;
+}
+
 void Select::rauw(const Value &what, Value &with) {
   RAUW(cond);
   RAUW(a);
@@ -1796,15 +1877,14 @@ StateValue Select::toSMT(State &s) const {
   auto &av = s[*a];
   auto &bv = s[*b];
 
-  auto scalar = [&](const auto &a, const auto &b, const auto &c) -> StateValue {
+  auto scalar
+    = [&](const auto &a, const auto &b, const auto &c, const Type &ty) {
     auto cond = c.value == 1;
-    auto identity = [](const expr &x) { return x; };
-    StateValue sva = fm_poison(s, a.value, a.non_poison, identity, getType(),
-                               fmath, true, false);
-    StateValue svb = fm_poison(s, b.value, b.non_poison, identity, getType(),
-                               fmath, true, false);
-    return { expr::mkIf(cond, sva.value, svb.value),
-             c.non_poison && expr::mkIf(cond, sva.non_poison, svb.non_poison) };
+    auto identity = [](const expr &x, auto rm) { return x; };
+    return fm_poison(s, expr::mkIf(cond, a.value, b.value),
+                     c.non_poison &&
+                       expr::mkIf(cond, a.non_poison, b.non_poison),
+                     identity, ty, fmath, {}, true, /*flags_out_only=*/true);
   };
 
   if (auto agg = getType().getAsAggregateType()) {
@@ -1814,11 +1894,12 @@ StateValue Select::toSMT(State &s) const {
     for (unsigned i = 0, e = agg->numElementsConst(); i != e; ++i) {
       if (!agg->isPadding(i))
         vals.emplace_back(scalar(agg->extract(av, i), agg->extract(bv, i),
-                                 cond_agg ? cond_agg->extract(cv, i) : cv));
+                                 cond_agg ? cond_agg->extract(cv, i) : cv,
+                                 agg->getChild(i)));
     }
     return agg->aggregateVals(vals);
   }
-  return scalar(av, bv, cv);
+  return scalar(av, bv, cv, getType());
 }
 
 expr Select::getTypeConstraints(const Function &f) const {
@@ -1841,6 +1922,14 @@ void ExtractValue::addIdx(unsigned idx) {
 
 vector<Value*> ExtractValue::operands() const {
   return { val };
+}
+
+bool ExtractValue::propagatesPoison() const {
+  return false;
+}
+
+bool ExtractValue::hasSideEffects() const {
+  return false;
 }
 
 void ExtractValue::rauw(const Value &what, Value &with) {
@@ -1902,6 +1991,14 @@ void InsertValue::addIdx(unsigned idx) {
 
 vector<Value*> InsertValue::operands() const {
   return { val, elt };
+}
+
+bool InsertValue::propagatesPoison() const {
+  return false;
+}
+
+bool InsertValue::hasSideEffects() const {
+  return false;
 }
 
 void InsertValue::rauw(const Value &what, Value &with) {
@@ -2098,6 +2195,10 @@ vector<Value*> FnCall::operands() const {
   return output;
 }
 
+bool FnCall::propagatesPoison() const {
+  return false;
+}
+
 void FnCall::rauw(const Value &what, Value &with) {
   for (auto &arg : args) {
     RAUW(arg.first);
@@ -2149,12 +2250,21 @@ static expr ptr_only_args(State &s, const Pointer &p) {
 
 static void check_can_load(State &s, const expr &p0) {
   auto &attrs = s.getFn().getFnAttrs();
-  Pointer p(s.getMemory(), p0);
+  if (attrs.mem.canReadAnything())
+    return;
 
-  if (attrs.has(FnAttrs::NoRead))
-    s.addUB(p.isLocal() || p.isConstGlobal());
-  else if (attrs.has(FnAttrs::ArgMemOnly))
-    s.addUB(p.isLocal() || ptr_only_args(s, p));
+  Pointer p(s.getMemory(), p0);
+  expr readable    = p.isLocal() || p.isConstGlobal();
+  expr nonreadable = false;
+
+  if (attrs.has(FnAttrs::NullPointerIsValid) &&
+      attrs.mem.canRead(MemoryAccess::Other))
+    readable |= p.isNull();
+
+  (attrs.mem.canRead(MemoryAccess::Args) ? readable : nonreadable)
+    |= ptr_only_args(s, p);
+
+  s.addUB(readable && !nonreadable);
 }
 
 static void check_can_store(State &s, const expr &p0) {
@@ -2162,24 +2272,27 @@ static void check_can_store(State &s, const expr &p0) {
     return;
 
   auto &attrs = s.getFn().getFnAttrs();
-  Pointer p(s.getMemory(), p0);
+  if (attrs.mem.canWriteAnything())
+    return;
 
-  if (attrs.has(FnAttrs::NoWrite))
-    s.addUB(p.isLocal());
-  else if (attrs.has(FnAttrs::ArgMemOnly))
-    s.addUB(p.isLocal() || ptr_only_args(s, p));
+  Pointer p(s.getMemory(), p0);
+  expr writable    = p.isLocal();
+  expr nonwritable = false;
+
+  (attrs.mem.canWrite(MemoryAccess::Args) ? writable : nonwritable)
+    |= ptr_only_args(s, p);
+
+  s.addUB(writable && !nonwritable);
 }
 
 static void unpack_inputs(State &s, Value &argv, Type &ty,
-                          const ParamAttrs &argflag, bool argmemonly,
-                          StateValue value, StateValue value2,
-                          vector<StateValue> &inputs,
+                          const ParamAttrs &argflag, StateValue value,
+                          StateValue value2, vector<StateValue> &inputs,
                           vector<Memory::PtrInput> &ptr_inputs) {
   if (auto agg = ty.getAsAggregateType()) {
     for (unsigned i = 0, e = agg->numElementsConst(); i != e; ++i) {
-      unpack_inputs(s, argv, agg->getChild(i), argflag, argmemonly,
-                    agg->extract(value, i), agg->extract(value2, i), inputs,
-                    ptr_inputs);
+      unpack_inputs(s, argv, agg->getChild(i), argflag, agg->extract(value, i),
+                    agg->extract(value2, i), inputs, ptr_inputs);
     }
     return;
   }
@@ -2188,10 +2301,6 @@ static void unpack_inputs(State &s, Value &argv, Type &ty,
     value = argflag.encode(s, std::move(value), ty);
 
     if (ty.isPtrType()) {
-      if (argmemonly)
-        value.non_poison
-          &= ptr_only_args(s, Pointer(s.getMemory(), value.value));
-
       ptr_inputs.emplace_back(std::move(value),
                               argflag.blockSize,
                               argflag.has(ParamAttrs::NoRead),
@@ -2252,8 +2361,6 @@ StateValue FnCall::toSMT(State &s) const {
   vector<StateValue> inputs;
   vector<Memory::PtrInput> ptr_inputs;
   vector<Type*> out_types;
-  bool argmemonly_fn   = s.getFn().getFnAttrs().has(FnAttrs::ArgMemOnly);
-  bool argmemonly_call = hasAttribute(FnAttrs::ArgMemOnly);
 
   ostringstream fnName_mangled;
   fnName_mangled << fnName;
@@ -2269,50 +2376,19 @@ StateValue FnCall::toSMT(State &s) const {
         sv2 = s.getAndAddPoisonUB(*arg, false);
     } else {
       sv  = s[*arg];
-      sv2 = s[*arg];
+      sv2 = s.eval(*arg, true);
     }
 
-    unpack_inputs(s, *arg, arg->getType(), flags, argmemonly_fn, std::move(sv),
-                  std::move(sv2), inputs, ptr_inputs);
+    unpack_inputs(s, *arg, arg->getType(), flags, std::move(sv), std::move(sv2),
+                  inputs, ptr_inputs);
     fnName_mangled << '#' << arg->getType();
   }
   fnName_mangled << '!' << getType();
   if (!isVoid())
     unpack_ret_ty(out_types, getType());
 
-  auto check = [&](FnAttrs::Attribute attr) {
-    return s.getFn().getFnAttrs().has(attr) && !hasAttribute(attr);
-  };
-
-  auto check_implies = [&](FnAttrs::Attribute attr) {
-    if (!check(attr))
-      return;
-
-    if (argmemonly_call) {
-      for (auto &p : ptr_inputs) {
-        if (!p.byval) {
-          Pointer ptr(m, p.val.value);
-          s.addUB(p.val.non_poison.implies(
-                    ptr.isLocal() || ptr.isConstGlobal()));
-        }
-      }
-    } else {
-      s.addUB(expr(false));
-    }
-  };
-
-  check_implies(FnAttrs::NoRead);
-  check_implies(FnAttrs::NoWrite);
-
   // Check attributes that calles must have if caller has them
-  if (check(FnAttrs::ArgMemOnly) ||
-      check(FnAttrs::NoThrow) ||
-      check(FnAttrs::WillReturn) ||
-      check(FnAttrs::InaccessibleMemOnly))
-    s.addUB(expr(false));
-
-  // can't have both!
-  if (attrs.has(FnAttrs::ArgMemOnly) && attrs.has(FnAttrs::InaccessibleMemOnly))
+  if (!attrs.refinedBy(s.getFn().getFnAttrs()))
     s.addUB(expr(false));
 
   auto get_alloc_ptr = [&]() -> Value& {
@@ -2348,13 +2424,15 @@ StateValue FnCall::toSMT(State &s) const {
 
       m.copy(ptr_old, Pointer(m, p_new));
 
-      // 1) realloc(ptr, 0) always free the ptr.
-      // 2) If allocation failed, we should not free previous ptr, unless it's
-      // reallocf (always frees the pointer)
-      expr freeptr = fnName == "@reallocf"
-                       ? allocptr
-                       : expr::mkIf(size == 0 || allocated, allocptr, nullp);
-      m.free(freeptr, false);
+      if (!hasAttribute(FnAttrs::NoFree)) {
+        // 1) realloc(ptr, 0) always free the ptr.
+        // 2) If allocation failed, we should not free previous ptr, unless it's
+        // reallocf (always frees the pointer)
+        expr freeptr = fnName == "@reallocf"
+                        ? allocptr
+                        : expr::mkIf(size == 0 || allocated, allocptr, nullp);
+        m.free(freeptr, false);
+      }
     }
 
     // FIXME: for a realloc that zeroes the new stuff
@@ -2368,17 +2446,18 @@ StateValue FnCall::toSMT(State &s) const {
   }
   else if (attrs.has(AllocKind::Free)) {
     auto &allocptr = s.getAndAddPoisonUB(get_alloc_ptr()).value;
-    m.free(allocptr, false);
 
-    if (s.getFn().getFnAttrs().has(FnAttrs::NoFree)) {
-      Pointer ptr(m, allocptr);
-      s.addUB(ptr.isNull() || ptr.isLocal());
+    if (!hasAttribute(FnAttrs::NoFree)) {
+      m.free(allocptr, false);
+
+      if (s.getFn().getFnAttrs().has(FnAttrs::NoFree)) {
+        Pointer ptr(m, allocptr);
+        s.addUB(ptr.isNull() || ptr.isLocal());
+      }
     }
     assert(isVoid());
     return {};
   }
-
-  check_implies(FnAttrs::NoFree);
 
   unsigned idx = 0;
   auto ret = s.addFnCall(fnName_mangled.str(), std::move(inputs),
@@ -2424,6 +2503,10 @@ vector<Value*> ICmp::operands() const {
 
 bool ICmp::propagatesPoison() const {
   return true;
+}
+
+bool ICmp::hasSideEffects() const {
+  return false;
 }
 
 bool ICmp::isPtrCmp() const {
@@ -2550,6 +2633,14 @@ vector<Value*> FCmp::operands() const {
   return { a, b };
 }
 
+bool FCmp::propagatesPoison() const {
+  return true;
+}
+
+bool FCmp::hasSideEffects() const {
+  return false;
+}
+
 void FCmp::rauw(const Value &what, Value &with) {
   RAUW(a);
   RAUW(b);
@@ -2583,8 +2674,8 @@ StateValue FCmp::toSMT(State &s) const {
   auto &a_eval = s[*a];
   auto &b_eval = s[*b];
 
-  auto fn = [&](const auto &a, const auto &b) -> StateValue {
-    auto cmp = [&](const expr &a, const expr &b) {
+  auto fn = [&](const auto &a, const auto &b, const Type &ty) -> StateValue {
+    auto cmp = [&](const expr &a, const expr &b, auto rm) {
       switch (cond) {
       case OEQ: return a.foeq(b);
       case OGT: return a.fogt(b);
@@ -2605,18 +2696,19 @@ StateValue FCmp::toSMT(State &s) const {
       }
     };
     auto [val, np] = fm_poison(s, a.value, a.non_poison, b.value, b.non_poison,
-                               cmp, getType(), fmath, true, true);
+                               cmp, ty, fmath, {}, false, true);
     return { val.toBVBool(), std::move(np) };
   };
 
   if (auto agg = a->getType().getAsAggregateType()) {
     vector<StateValue> vals;
     for (unsigned i = 0, e = agg->numElementsConst(); i != e; ++i) {
-      vals.emplace_back(fn(agg->extract(a_eval, i), agg->extract(b_eval, i)));
+      vals.emplace_back(fn(agg->extract(a_eval, i), agg->extract(b_eval, i),
+                           agg->getChild(i)));
     }
     return getType().getAsAggregateType()->aggregateVals(vals);
   }
-  return fn(a_eval, b_eval);
+  return fn(a_eval, b_eval, a->getType());
 }
 
 expr FCmp::getTypeConstraints(const Function &f) const {
@@ -2634,6 +2726,14 @@ unique_ptr<Instr> FCmp::dup(Function &f, const string &suffix) const {
 
 vector<Value*> Freeze::operands() const {
   return { val };
+}
+
+bool Freeze::propagatesPoison() const {
+  return false;
+}
+
+bool Freeze::hasSideEffects() const {
+  return false;
 }
 
 void Freeze::rauw(const Value &what, Value &with) {
@@ -2686,10 +2786,11 @@ void Phi::addValue(Value &val, string &&BB_name) {
 }
 
 void Phi::removeValue(const string &BB_name) {
-  for (auto I = values.begin(), E = values.end(); I != E; ++I) {
+  for (auto I = values.begin(); I != values.end(); ) {
     if (I->second == BB_name) {
-      values.erase(I);
-      break;
+      I = values.erase(I);
+    } else {
+      ++I;
     }
   }
 }
@@ -2717,6 +2818,14 @@ vector<Value*> Phi::operands() const {
     v.emplace_back(val);
   }
   return v;
+}
+
+bool Phi::propagatesPoison() const {
+  return false;
+}
+
+bool Phi::hasSideEffects() const {
+  return false;
 }
 
 void Phi::rauw(const Value &what, Value &with) {
@@ -2761,9 +2870,10 @@ StateValue Phi::toSMT(State &s) const {
   }
 
   StateValue sv = *std::move(ret)();
-  auto identity = [](const expr &x) { return x; };
-  return fm_poison(s, sv.value, sv.non_poison, identity, getType(), fmath, true,
-                   false);
+  auto identity = [](const expr &x, auto rm) { return x; };
+  return
+    fm_poison(s, sv.value, sv.non_poison, identity, getType(), fmath, {}, true,
+              /*flags_out_only=*/true);
 }
 
 expr Phi::getTypeConstraints(const Function &f) const {
@@ -2782,6 +2892,14 @@ unique_ptr<Instr> Phi::dup(Function &f, const string &suffix) const {
   return phi;
 }
 
+
+bool JumpInstr::propagatesPoison() const {
+  return false;
+}
+
+bool JumpInstr::hasSideEffects() const {
+  return true;
+}
 
 const BasicBlock& JumpInstr::target_iterator::operator*() const {
   if (auto br = dynamic_cast<const Branch*>(instr))
@@ -2906,8 +3024,7 @@ StateValue Switch::toSMT(State &s) const {
     s.addJump(std::move(cmp), *bb);
   }
 
-  s.addJump(std::move(default_cond), *default_target);
-  s.addUB(expr(false));
+  s.addJump(std::move(default_cond), *default_target, true);
   return {};
 }
 
@@ -2930,6 +3047,14 @@ unique_ptr<Instr> Switch::dup(Function &f, const string &suffix) const {
 
 vector<Value*> Return::operands() const {
   return { val };
+}
+
+bool Return::propagatesPoison() const {
+  return false;
+}
+
+bool Return::hasSideEffects() const {
+  return true;
 }
 
 void Return::rauw(const Value &what, Value &with) {
@@ -3021,15 +3146,13 @@ unique_ptr<Instr> Return::dup(Function &f, const string &suffix) const {
 
 Assume::Assume(Value &cond, Kind kind)
     : Instr(Type::voidTy, "assume"), args({&cond}), kind(kind) {
-  assert(kind == AndNonPoison || kind == IfNonPoison || kind == WellDefined ||
-         kind == NonNull);
+  assert(kind == AndNonPoison || kind == WellDefined || kind == NonNull);
 }
 
 Assume::Assume(vector<Value *> &&args0, Kind kind)
     : Instr(Type::voidTy, "assume"), args(std::move(args0)), kind(kind) {
   if (args.size() == 1)
-    assert(kind == AndNonPoison || kind == IfNonPoison || kind == WellDefined ||
-           kind == NonNull);
+    assert(kind == AndNonPoison || kind == WellDefined || kind == NonNull);
   else {
     assert(kind == Align && args.size() == 2);
   }
@@ -3037,6 +3160,14 @@ Assume::Assume(vector<Value *> &&args0, Kind kind)
 
 vector<Value*> Assume::operands() const {
   return args;
+}
+
+bool Assume::propagatesPoison() const {
+  return false;
+}
+
+bool Assume::hasSideEffects() const {
+  return true;
 }
 
 void Assume::rauw(const Value &what, Value &with) {
@@ -3048,7 +3179,6 @@ void Assume::print(ostream &os) const {
   const char *str = nullptr;
   switch (kind) {
   case AndNonPoison: str = "assume "; break;
-  case IfNonPoison:  str = "assume_non_poison "; break;
   case WellDefined:  str = "assume_welldefined "; break;
   case Align:        str = "assume_align "; break;
   case NonNull:      str = "assume_nonnull "; break;
@@ -3069,11 +3199,6 @@ StateValue Assume::toSMT(State &s) const {
   case AndNonPoison: {
     auto &v = s.getAndAddPoisonUB(*args[0]);
     s.addUB(v.value != 0);
-    break;
-  }
-  case IfNonPoison: {
-    auto &[v, np] = s[*args[0]];
-    s.addUB(np.implies(v != 0));
     break;
   }
   case WellDefined:
@@ -3107,7 +3232,6 @@ expr Assume::getTypeConstraints(const Function &f) const {
   case WellDefined:
     return true;
   case AndNonPoison:
-  case IfNonPoison:
     return args[0]->getType().enforceIntType();
   case Align:
     return args[0]->getType().enforcePtrType() &&
@@ -3115,13 +3239,129 @@ expr Assume::getTypeConstraints(const Function &f) const {
   case NonNull:
     return args[0]->getType().enforcePtrType();
   }
-  return {};
+  UNREACHABLE();
 }
 
 unique_ptr<Instr> Assume::dup(Function &f, const string &suffix) const {
   return make_unique<Assume>(vector<Value *>(args), kind);
 }
 
+
+AssumeVal::AssumeVal(Type &type, string &&name, Value &val,
+                     vector<Value *> &&args0, Kind kind)
+    : Instr(type, std::move(name)), val(&val), args(std::move(args0)),
+      kind(kind) {
+  switch (kind) {
+  case Align:
+    assert(args.size() == 1);
+    break;
+  case NonNull:
+    assert(args.empty());
+    break;
+  case Range:
+    assert((args.size() & 1) == 0);
+    break;
+  }
+}
+
+vector<Value*> AssumeVal::operands() const {
+  auto ret = args;
+  ret.emplace_back(val);
+  return ret;
+}
+
+bool AssumeVal::propagatesPoison() const {
+  return true;
+}
+
+bool AssumeVal::hasSideEffects() const {
+  return false;
+}
+
+void AssumeVal::rauw(const Value &what, Value &with) {
+  RAUW(val);
+  for (auto &arg: args)
+    RAUW(arg);
+}
+
+void AssumeVal::print(ostream &os) const {
+  const char *str = nullptr;
+  switch (kind) {
+  case Align:   str = "align "; break;
+  case NonNull: str = "nonnull "; break;
+  case Range:   str = "range "; break;
+  }
+
+  os << getName() << " = !" << str << *val;
+
+  for (auto &arg: args) {
+    os << ", " << *arg;
+  }
+}
+
+StateValue AssumeVal::toSMT(State &s) const {
+  auto &v = s[*val];
+
+  expr np;
+  switch (kind) {
+  case Align:
+    uint64_t n;
+    ENSURE(s[*args[0]].value.isUInt(n));
+    np = Pointer(s.getMemory(), expr(v.value)).isAligned(n);
+    break;
+
+  case NonNull:
+    np = !Pointer(s.getMemory(), expr(v.value)).isNull();
+    break;
+
+  case Range: { // val in [l1, h1) U ... U [ln, hn) (signed)
+    OrExpr inrange;
+    for (unsigned i = 0, e = args.size(); i != e; i += 2) {
+      auto &lb = s[*args[i]].value;
+      auto &hb = s[*args[i+1]].value;
+      auto l = v.value.sge(lb);
+      auto h = v.value.slt(hb);
+
+      if (lb.sgt(hb).isTrue()) { // wrapping interval
+        inrange.add(std::move(l));
+        inrange.add(std::move(h));
+      } else {
+        inrange.add(l && h);
+      }
+    }
+    np = std::move(inrange)();
+    break;
+  }
+  }
+  return { expr(v.value), v.non_poison && np };
+}
+
+expr AssumeVal::getTypeConstraints(const Function &f) const {
+  expr e = true;
+  switch (kind) {
+  case Align:
+    e = args[0]->getType().isIntType();
+    break;
+  case NonNull:
+    break;
+  case Range:
+    for (auto &arg : args) {
+      e &= arg->getType() == getType();
+    }
+    break;
+  }
+  return getType() == val->getType() && e;
+}
+
+unique_ptr<Instr> AssumeVal::dup(Function &f, const string &suffix) const {
+  return make_unique<AssumeVal>(getType(), getName() + suffix, *val,
+                                vector<Value*>(args), kind);
+}
+
+
+bool MemInstr::hasSideEffects() const {
+  return true;
+}
 
 MemInstr::ByteAccessInfo MemInstr::ByteAccessInfo::intOnly(unsigned bytesz) {
   ByteAccessInfo info;
@@ -3172,6 +3412,10 @@ vector<Value*> Alloc::operands() const {
   if (mul)
     return { size, mul };
   return { size };
+}
+
+bool Alloc::propagatesPoison() const {
+  return true;
 }
 
 void Alloc::rauw(const Value &what, Value &with) {
@@ -3235,6 +3479,10 @@ vector<Value*> StartLifetime::operands() const {
   return { ptr };
 }
 
+bool StartLifetime::propagatesPoison() const {
+  return false;
+}
+
 void StartLifetime::rauw(const Value &what, Value &with) {
   RAUW(ptr);
 }
@@ -3244,7 +3492,7 @@ void StartLifetime::print(ostream &os) const {
 }
 
 StateValue StartLifetime::toSMT(State &s) const {
-  auto &p = s.getAndAddPoisonUB(*ptr, true).value;
+  auto &p = s.getWellDefinedPtr(*ptr);
   s.getMemory().startLifetime(p);
   return {};
 }
@@ -3267,16 +3515,20 @@ vector<Value*> EndLifetime::operands() const {
   return { ptr };
 }
 
+bool EndLifetime::propagatesPoison() const {
+  return false;
+}
+
 void EndLifetime::rauw(const Value &what, Value &with) {
   RAUW(ptr);
 }
 
 void EndLifetime::print(ostream &os) const {
-  os << "start_lifetime " << *ptr;
+  os << "end_lifetime " << *ptr;
 }
 
 StateValue EndLifetime::toSMT(State &s) const {
-  auto &p = s.getAndAddPoisonUB(*ptr, true).value;
+  auto &p = s.getWellDefinedPtr(*ptr);
   s.getMemory().free(p, true);
   return {};
 }
@@ -3334,6 +3586,14 @@ vector<Value*> GEP::operands() const {
     v.emplace_back(idx);
   }
   return v;
+}
+
+bool GEP::propagatesPoison() const {
+  return true;
+}
+
+bool GEP::hasSideEffects() const {
+  return false;
 }
 
 void GEP::rauw(const Value &what, Value &with) {
@@ -3451,6 +3711,10 @@ vector<Value*> Load::operands() const {
   return { ptr };
 }
 
+bool Load::propagatesPoison() const {
+  return true;
+}
+
 void Load::rauw(const Value &what, Value &with) {
   RAUW(ptr);
 }
@@ -3461,7 +3725,7 @@ void Load::print(ostream &os) const {
 }
 
 StateValue Load::toSMT(State &s) const {
-  auto &p = s.getAndAddPoisonUB(*ptr, true).value;
+  auto &p = s.getWellDefinedPtr(*ptr);
   check_can_load(s, p);
   auto [sv, ub] = s.getMemory().load(p, getType(), align);
   s.addUB(std::move(ub));
@@ -3493,6 +3757,10 @@ vector<Value*> Store::operands() const {
   return { val, ptr };
 }
 
+bool Store::propagatesPoison() const {
+  return false;
+}
+
 void Store::rauw(const Value &what, Value &with) {
   RAUW(val);
   RAUW(ptr);
@@ -3511,7 +3779,7 @@ StateValue Store::toSMT(State &s) const {
     return {};
   }
 
-  auto &p = s.getAndAddPoisonUB(*ptr, true).value;
+  auto &p = s.getWellDefinedPtr(*ptr);
   check_can_store(s, p);
   auto &v = s[*val];
   s.getMemory().store(p, v, val->getType(), align, s.getUndefVars());
@@ -3545,6 +3813,10 @@ vector<Value*> Memset::operands() const {
   return { ptr, val, bytes };
 }
 
+bool Memset::propagatesPoison() const {
+  return false;
+}
+
 void Memset::rauw(const Value &what, Value &with) {
   RAUW(ptr);
   RAUW(val);
@@ -3562,7 +3834,7 @@ StateValue Memset::toSMT(State &s) const {
   uint64_t n;
   expr vptr;
   if (vbytes.isUInt(n) && n > 0) {
-    vptr = s.getAndAddPoisonUB(*ptr, true).value;
+    vptr = s.getWellDefinedPtr(*ptr);
   } else {
     auto &sv_ptr = s[*ptr];
     auto &sv_ptr2 = s[*ptr];
@@ -3612,6 +3884,10 @@ vector<Value*> MemsetPattern::operands() const {
   return { ptr, pattern, bytes };
 }
 
+bool MemsetPattern::propagatesPoison() const {
+  return false;
+}
+
 void MemsetPattern::rauw(const Value &what, Value &with) {
   RAUW(ptr);
   RAUW(pattern);
@@ -3623,7 +3899,7 @@ void MemsetPattern::print(ostream &os) const {
 }
 
 StateValue MemsetPattern::toSMT(State &s) const {
-  auto &vptr = s.getAndAddPoisonUB(*ptr, false).value;
+  auto &vptr = s.getWellDefinedPtr(*ptr);
   auto &vpattern = s.getAndAddPoisonUB(*pattern, false).value;
   auto &vbytes = s.getAndAddPoisonUB(*bytes, true).value;
   check_can_store(s, vptr);
@@ -3658,6 +3934,10 @@ vector<Value*> FillPoison::operands() const {
   return { ptr };
 }
 
+bool FillPoison::propagatesPoison() const {
+  return true;
+}
+
 void FillPoison::rauw(const Value &what, Value &with) {
   RAUW(ptr);
 }
@@ -3667,7 +3947,7 @@ void FillPoison::print(ostream &os) const {
 }
 
 StateValue FillPoison::toSMT(State &s) const {
-  auto &vptr = s.getAndAddPoisonUB(*ptr, true).value;
+  auto &vptr = s.getWellDefinedPtr(*ptr);
   Memory &m = s.getMemory();
   m.fillPoison(Pointer(m, vptr).getBid());
   return {};
@@ -3706,6 +3986,10 @@ vector<Value*> Memcpy::operands() const {
   return { dst, src, bytes };
 }
 
+bool Memcpy::propagatesPoison() const {
+  return false;
+}
+
 void Memcpy::rauw(const Value &what, Value &with) {
   RAUW(dst);
   RAUW(src);
@@ -3723,7 +4007,7 @@ StateValue Memcpy::toSMT(State &s) const {
   uint64_t n;
   expr vsrc, vdst;
   if (align_dst || (vbytes.isUInt(n) && n > 0)) {
-    vdst = s.getAndAddPoisonUB(*dst, true).value;
+    vdst = s.getWellDefinedPtr(*dst);
   } else {
     auto &sv_dst = s[*dst];
     auto &sv_dst2 = s[*dst];
@@ -3733,7 +4017,7 @@ StateValue Memcpy::toSMT(State &s) const {
   }
 
   if (align_src || (vbytes.isUInt(n) && n > 0)) {
-    vsrc = s.getAndAddPoisonUB(*src, true).value;
+    vsrc = s.getWellDefinedPtr(*src);
   } else {
     auto &sv_src = s[*src];
     auto &sv_src2 = s[*src];
@@ -3781,6 +4065,10 @@ vector<Value*> Memcmp::operands() const {
   return { ptr1, ptr2, num };
 }
 
+bool Memcmp::propagatesPoison() const {
+  return false;
+}
+
 void Memcmp::rauw(const Value &what, Value &with) {
   RAUW(ptr1);
   RAUW(ptr2);
@@ -3811,18 +4099,15 @@ StateValue Memcmp::toSMT(State &s) const {
 
   expr result_var, result_var_neg;
   if (is_bcmp) {
-    result_var = expr::mkFreshVar("bcmp_nonzero", zero);
+    result_var = s.getFreshNondetVar("bcmp_nonzero", zero);
     s.addPre(result_var != zero);
-    s.addQuantVar(result_var);
   } else {
     auto z31 = expr::mkUInt(0, 31);
-    result_var = expr::mkFreshVar("memcmp_nonzero", z31);
+    result_var = s.getFreshNondetVar("memcmp_nonzero", z31);
     s.addPre(result_var != z31);
-    s.addQuantVar(result_var);
     result_var = expr::mkUInt(0, 1).concat(result_var);
 
-    result_var_neg = expr::mkFreshVar("memcmp", z31);
-    s.addQuantVar(result_var_neg);
+    result_var_neg = s.getFreshNondetVar("memcmp", z31);
     result_var_neg = expr::mkUInt(1, 1).concat(result_var_neg);
   }
 
@@ -3893,6 +4178,10 @@ vector<Value*> Strlen::operands() const {
   return { ptr };
 }
 
+bool Strlen::propagatesPoison() const {
+  return true;
+}
+
 void Strlen::rauw(const Value &what, Value &with) {
   RAUW(ptr);
 }
@@ -3902,7 +4191,7 @@ void Strlen::print(ostream &os) const {
 }
 
 StateValue Strlen::toSMT(State &s) const {
-  auto &eptr = s.getAndAddPoisonUB(*ptr, true).value;
+  auto &eptr = s.getWellDefinedPtr(*ptr);
   check_can_load(s, eptr);
 
   Pointer p(s.getMemory(), eptr);
@@ -3937,6 +4226,14 @@ vector<Value*> VaStart::operands() const {
   return { ptr };
 }
 
+bool VaStart::propagatesPoison() const {
+  return true;
+}
+
+bool VaStart::hasSideEffects() const {
+  return true;
+}
+
 void VaStart::rauw(const Value &what, Value &with) {
   RAUW(ptr);
 }
@@ -3949,7 +4246,7 @@ StateValue VaStart::toSMT(State &s) const {
   s.addUB(expr(s.getFn().isVarArgs()));
 
   auto &data  = s.getVarArgsData();
-  auto &raw_p = s.getAndAddPoisonUB(*ptr, true).value;
+  auto &raw_p = s.getWellDefinedPtr(*ptr);
 
   expr zero     = expr::mkUInt(0, VARARG_BITS);
   expr num_args = expr::mkVar("num_va_args", VARARG_BITS);
@@ -3990,6 +4287,14 @@ vector<Value*> VaEnd::operands() const {
   return { ptr };
 }
 
+bool VaEnd::propagatesPoison() const {
+  return true;
+}
+
+bool VaEnd::hasSideEffects() const {
+  return true;
+}
+
 void VaEnd::rauw(const Value &what, Value &with) {
   RAUW(ptr);
 }
@@ -4024,7 +4329,7 @@ static void ensure_varargs_ptr(D &data, State &s, const expr &arg_ptr) {
 
 StateValue VaEnd::toSMT(State &s) const {
   auto &data  = s.getVarArgsData();
-  auto &raw_p = s.getAndAddPoisonUB(*ptr, true).value;
+  auto &raw_p = s.getWellDefinedPtr(*ptr);
 
   s.addUB(Pointer(s.getMemory(), raw_p).isBlockAlive());
 
@@ -4051,6 +4356,14 @@ vector<Value*> VaCopy::operands() const {
   return { dst, src };
 }
 
+bool VaCopy::propagatesPoison() const {
+  return true;
+}
+
+bool VaCopy::hasSideEffects() const {
+  return true;
+}
+
 void VaCopy::rauw(const Value &what, Value &with) {
   RAUW(dst);
   RAUW(src);
@@ -4062,8 +4375,8 @@ void VaCopy::print(ostream &os) const {
 
 StateValue VaCopy::toSMT(State &s) const {
   auto &data = s.getVarArgsData();
-  auto &dst_raw = s.getAndAddPoisonUB(*dst, true).value;
-  auto &src_raw = s.getAndAddPoisonUB(*src, true).value;
+  auto &dst_raw = s.getWellDefinedPtr(*dst);
+  auto &src_raw = s.getWellDefinedPtr(*src);
   Pointer dst(s.getMemory(), dst_raw);
   Pointer src(s.getMemory(), src_raw);
 
@@ -4108,6 +4421,14 @@ vector<Value*> VaArg::operands() const {
   return { ptr };
 }
 
+bool VaArg::propagatesPoison() const {
+  return true;
+}
+
+bool VaArg::hasSideEffects() const {
+  return true;
+}
+
 void VaArg::rauw(const Value &what, Value &with) {
   RAUW(ptr);
 }
@@ -4118,7 +4439,7 @@ void VaArg::print(ostream &os) const {
 
 StateValue VaArg::toSMT(State &s) const {
   auto &data  = s.getVarArgsData();
-  auto &raw_p = s.getAndAddPoisonUB(*ptr, true).value;
+  auto &raw_p = s.getWellDefinedPtr(*ptr);
 
   s.addUB(Pointer(s.getMemory(), raw_p).isBlockAlive());
 
@@ -4167,6 +4488,15 @@ vector<Value*> ExtractElement::operands() const {
   return { v, idx };
 }
 
+bool ExtractElement::propagatesPoison() const {
+  // the output depends on the idx, so it may not propagate to all lanes
+  return false;
+}
+
+bool ExtractElement::hasSideEffects() const {
+  return false;
+}
+
 void ExtractElement::rauw(const Value &what, Value &with) {
   RAUW(v);
   RAUW(idx);
@@ -4198,6 +4528,14 @@ unique_ptr<Instr> ExtractElement::dup(Function &f, const string &suffix) const {
 
 vector<Value*> InsertElement::operands() const {
   return { v, e, idx };
+}
+
+bool InsertElement::propagatesPoison() const {
+  return false;
+}
+
+bool InsertElement::hasSideEffects() const {
+  return false;
 }
 
 void InsertElement::rauw(const Value &what, Value &with) {
@@ -4235,6 +4573,15 @@ unique_ptr<Instr> InsertElement::dup(Function &f, const string &suffix) const {
 
 vector<Value*> ShuffleVector::operands() const {
   return { v1, v2 };
+}
+
+bool ShuffleVector::propagatesPoison() const {
+  // the output depends on the mask, so it may not propagate to all lanes
+  return false;
+}
+
+bool ShuffleVector::hasSideEffects() const {
+  return false;
 }
 
 void ShuffleVector::rauw(const Value &what, Value &with) {
@@ -4281,6 +4628,14 @@ unique_ptr<Instr> ShuffleVector::dup(Function &f, const string &suffix) const {
 
 vector<Value*> FakeShuffle::operands() const {
   return { v1, v2, mask };
+}
+
+bool FakeShuffle::propagatesPoison() const {
+  return false;
+}
+
+bool FakeShuffle::hasSideEffects() const {
+  return false;
 }
 
 void FakeShuffle::rauw(const Value &what, Value &with) {
@@ -4331,6 +4686,14 @@ unique_ptr<Instr> FakeShuffle::dup(Function &f, const string &suffix) const {
 
 vector<Value*> X86IntrinBinOp::operands() const {
   return { a, b };
+}
+
+bool X86IntrinBinOp::propagatesPoison() const {
+  return true;
+}
+
+bool X86IntrinBinOp::hasSideEffects() const {
+  return false;
 }
 
 void X86IntrinBinOp::rauw(const Value &what, Value &with) {
@@ -4942,17 +5305,6 @@ unique_ptr<Instr> X86IntrinBinOp::dup(Function &f, const string &suffix) const {
 const ConversionOp* isCast(ConversionOp::Op op, const Value &v) {
   auto c = dynamic_cast<const ConversionOp*>(&v);
   return (c && c->getOp() == op) ? c : nullptr;
-}
-
-bool hasNoSideEffects(const Instr &i) {
-  return isNoOp(i) ||
-         dynamic_cast<const ConversionOp*>(&i) ||
-         dynamic_cast<const ExtractValue*>(&i) ||
-         dynamic_cast<const Freeze*>(&i) ||
-         dynamic_cast<const GEP*>(&i) ||
-         dynamic_cast<const ICmp*>(&i) ||
-         dynamic_cast<const InsertValue*>(&i) ||
-         dynamic_cast<const ShuffleVector*>(&i);
 }
 
 Value* isNoOp(const Value &v) {

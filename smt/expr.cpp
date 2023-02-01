@@ -382,6 +382,11 @@ bool expr::isBool() const {
   return Z3_get_sort_kind(ctx(), sort()) == Z3_BOOL_SORT;
 }
 
+bool expr::isFloat() const {
+  C();
+  return Z3_get_sort_kind(ctx(), sort()) == Z3_FLOATING_POINT_SORT;
+}
+
 bool expr::isTrue() const {
   C();
   return Z3_get_bool_value(ctx(), ast()) == Z3_L_TRUE;
@@ -549,10 +554,38 @@ bool expr::isFPDiv(expr &rounding, expr &lhs, expr &rhs) const {
 }
 
 bool expr::isFPNeg(expr &val) const {
+  if (isBV()) {
+    // extract(signbit, signbit) ^ 1).concat(extract(signbit-1, 0))
+    expr sign, rest, a, b, val, val2;
+    unsigned high, high2, low;
+    auto check_not = [&](const expr &a, const expr &b) {
+      unsigned l;
+      return a.isExtract(val, high, l) && b.isAllOnes() && b.bits() == 1;
+    };
+    return isConcat(sign, rest) &&
+           sign.isBinOp(a, b, Z3_OP_BXOR) &&
+           (check_not(a, b) || check_not(b, a)) &&
+           rest.isExtract(val2, high2, low) &&
+           low == 0 && high2 == high - 1 &&
+           val.eq(val2);
+  }
   return isUnOp(val, Z3_OP_FPA_NEG);
 }
 
+bool expr::isFAbs(expr &val) const {
+  return isUnOp(val, Z3_OP_FPA_ABS);
+}
+
 bool expr::isIsFPZero() const {
+  if (isBV()) {
+    // extract(bits()-2, 0) == 0
+    expr lhs, rhs, v;
+    unsigned high, low;
+    return isEq(lhs, rhs) &&
+           lhs.isExtract(v, high, low) &&
+           high == bits()-2 && low == 0 &&
+           rhs.isZero();
+  }
   return isAppOf(Z3_OP_FPA_IS_ZERO);
 }
 
@@ -1056,16 +1089,27 @@ expr expr::abs() const {
 
 expr expr::isNaN() const {
   fold_fp_neg(isNaN);
+
+  expr v;
+  if (isFPNeg(v) || isFAbs(v))
+    return v.isNaN();
+
   return unop_fold(Z3_mk_fpa_is_nan);
 }
 
 expr expr::isInf() const {
   fold_fp_neg(isInf);
+
+  expr v;
+  if (isFPNeg(v))
+    return v.isInf();
+
   return unop_fold(Z3_mk_fpa_is_infinite);
 }
 
 expr expr::isFPZero() const {
-  fold_fp_neg(isFPZero);
+  if (isBV())
+    return extract(bits()-2, 0) == 0;
   return unop_fold(Z3_mk_fpa_is_zero);
 }
 
@@ -1126,12 +1170,25 @@ expr expr::fdiv(const expr &rhs, const expr &rm) const {
 }
 
 expr expr::fabs() const {
+  if (isBV())
+    return expr::mkUInt(0, 1).concat(extract(bits() - 2, 0));
+
   fold_fp_neg(fabs);
   return unop_fold(Z3_mk_fpa_abs);
 }
 
 expr expr::fneg() const {
+  if (isBV()) {
+    auto signbit = bits() - 1;
+    return (extract(signbit, signbit) ^ expr::mkUInt(1, 1))
+             .concat(extract(signbit - 1, 0));
+  }
   return unop_fold(Z3_mk_fpa_neg);
+}
+
+expr expr::copysign(const expr &sign) const {
+  auto sign_bit = sign.bits() - 1;
+  return sign.extract(sign_bit, sign_bit).concat(extract(bits() - 2, 0));
 }
 
 expr expr::sqrt(const expr &rm) const {
@@ -1217,9 +1274,9 @@ expr expr::funo(const expr &rhs) const {
 static expr get_bool(const expr &e) {
   expr cond, then, els;
   if (e.isIf(cond, then, els)) {
-    if ((then == 1).isTrue() && (els == 0).isTrue())
+    if (then.isOne() && els.isZero())
       return cond;
-    if ((then == 0).isTrue() && (els == 1).isTrue())
+    if (then.isZero() && els.isOne())
       return !cond;
   }
   return {};
@@ -1568,9 +1625,10 @@ expr expr::ugt(const expr &rhs) const {
     return false;
 
   uint64_t n;
-  if (rhs.isUInt(n))
-    return uge(mkUInt(n + 1, sort()));
-
+  if (rhs.isUInt(n)) {
+    auto ty = sort();
+    return uge(mkUInt(n, ty) + mkUInt(1, ty));
+  }
   return !ule(rhs);
 }
 
@@ -1818,7 +1876,8 @@ expr expr::BV2float(const expr &type) const {
 
 expr expr::float2Float(const expr &type, const expr &rm) const {
   C(type, rm);
-  return Z3_mk_fpa_to_fp_float(ctx(), rm(), ast(), type.sort());
+  return simplify_const(Z3_mk_fpa_to_fp_float(ctx(), rm(), ast(), type.sort()),
+                        *this);
 }
 
 expr expr::fp2sint(unsigned bits, const expr &rm) const {
@@ -1896,14 +1955,15 @@ expr expr::load(const expr &idx) const {
     expr cmp = idx == str_idx;
     if (cmp.isTrue())
       return val;
-    if (cmp.isFalse())
-      return array.load(idx);
+
+    auto loaded = array.load(idx);
+    if (cmp.isFalse() || val.eq(loaded))
+      return loaded;
 
   } else if (isConstArray(val)) {
     return val;
 
-  } else if (Z3_get_ast_kind(ctx(), ast()) == Z3_QUANTIFIER_AST &&
-             Z3_is_lambda(ctx(), ast())) {
+  } else if (Z3_is_lambda(ctx(), ast())) {
     assert(Z3_get_quantifier_num_bound(ctx(), ast()) == 1);
     expr body = Z3_get_quantifier_body(ctx(), ast());
     return body.subst({ idx }).foldTopLevel();
@@ -2168,7 +2228,7 @@ string expr::numeral_string() const {
 string expr::fn_name() const {
   if (isApp())
     return Z3_get_symbol_string(ctx(), Z3_get_decl_name(ctx(), decl()));
-  return "";
+  return {};
 }
 
 unsigned expr::getFnNumArgs() const {

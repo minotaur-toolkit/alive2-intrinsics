@@ -50,7 +50,7 @@ void BasicBlock::addInstrAt(unique_ptr<Instr> &&i, const Instr *other,
   }
 }
 
-void BasicBlock::delInstr(Instr *i) {
+void BasicBlock::delInstr(const Instr *i) {
   for (auto I = m_instrs.begin(), E = m_instrs.end(); I != E; ++I) {
     if (I->get() == i) {
       m_instrs.erase(I);
@@ -123,6 +123,11 @@ expr Function::getTypeConstraints() const {
     }
   }
   return t;
+}
+
+void Function::rauw(const Value &what, Value &with) {
+  for (auto bb : getBBs())
+    bb->rauw(what, with);
 }
 
 void Function::fixupTypes(const Model &m) {
@@ -221,6 +226,10 @@ void Function::addInput(unique_ptr<Value> &&i) {
   assert(dynamic_cast<Input *>(i.get()) ||
          dynamic_cast<ConstantInput*>(i.get()));
   inputs.emplace_back(std::move(i));
+}
+
+void Function::replaceInput(std::unique_ptr<Value> &&c, unsigned idx) {
+  inputs[idx] = std::move(c);
 }
 
 bool Function::hasReturn() const {
@@ -878,6 +887,7 @@ void CFG::printDot(ostream &os) const {
 // traverse the cfg in reverse postorder to build dominators.
 void DomTree::buildDominators(const CFG &cfg) {
   // initialization
+  // +1 for the sink BB
   unsigned i = f.getBBs().size() + 1;
   for (auto &b : f.getBBs()) {
     doms.emplace(b, *b).first->second.order = --i;
@@ -966,7 +976,8 @@ void DomTree::printDot(ostream &os) const {
 
 
 void LoopAnalysis::getDepthFirstSpanningTree() {
-  unsigned bb_count = f.getBBs().size();
+  // +1 to account for the sink BB
+  unsigned bb_count = f.getBBs().size() + 1;
   node.resize(bb_count, nullptr);
   last.resize(bb_count, -1u);
 
@@ -998,7 +1009,8 @@ void LoopAnalysis::getDepthFirstSpanningTree() {
 // Havlak, P. (1997). Nesting of reducible and irreducible loops.
 void LoopAnalysis::run() {
   getDepthFirstSpanningTree();
-  unsigned bb_count = f.getBBs().size();
+  // +1 to account for the sink BB
+  unsigned bb_count = f.getBBs().size() + 1;
 
   auto isAncestor = [this](unsigned w, unsigned v) -> bool {
     return w <= v && v <= last[w];

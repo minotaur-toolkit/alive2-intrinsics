@@ -223,8 +223,6 @@ space+ {
 "uge" { return UGE; }
 "ugt" { return UGT; }
 "call" { return CALL; }
-"noread" { return NOREAD; }
-"nowrite" { return NOWRITE; }
 "noreturn" { return NORETURN; }
 "willreturn" { return WILLRETURN; }
 "freeze" { return FREEZE; }
@@ -303,8 +301,12 @@ space+ {
 "ninf" { return NINF; }
 "nsz" { return NSZ; }
 "assume" { return ASSUME; }
-"assume_non_poison" { return ASSUME_NON_POISON; }
 "unreachable" { return UNREACH; }
+"memory" { return MEMORY; }
+"read" { return READ; }
+"readwrite" { return READ; }
+"write" { return WRITE; }
+"none" { return NONE; }
 
 [a-zA-Z][a-zA-Z0-9]* {
   COPY_STR();

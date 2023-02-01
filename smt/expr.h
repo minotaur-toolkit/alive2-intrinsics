@@ -21,7 +21,7 @@ typedef struct _Z3_sort* Z3_sort;
 namespace smt {
 
 class expr {
-  uintptr_t ptr;
+  uintptr_t ptr = 0;
 
   expr(Z3_ast ast) noexcept;
   bool isZ3Ast() const;
@@ -61,9 +61,9 @@ class expr {
   bool isTernaryOp(expr &a, expr &b, expr &c, int z3op) const;
 
 public:
-  expr() : ptr(0) {}
+  expr() = default;
 
-  expr(expr &&other) noexcept : ptr(0) {
+  expr(expr &&other) noexcept {
     std::swap(ptr, other.ptr);
   }
 
@@ -113,6 +113,7 @@ public:
   bool isVar() const;
   bool isBV() const;
   bool isBool() const;
+  bool isFloat() const;
   bool isTrue() const;
   bool isFalse() const;
   bool isZero() const;
@@ -147,6 +148,7 @@ public:
   bool isFPMul(expr &rounding, expr &lhs, expr &rhs) const;
   bool isFPDiv(expr &rounding, expr &lhs, expr &rhs) const;
   bool isFPNeg(expr &neg) const;
+  bool isFAbs(expr &val) const;
   bool isIsFPZero() const;
   bool isNaNCheck(expr &fp) const;
   bool isfloat2BV(expr &fp) const;
@@ -232,6 +234,7 @@ public:
   expr fdiv(const expr &rhs, const expr &rm) const;
   expr fabs() const;
   expr fneg() const;
+  expr copysign(const expr &sign) const;
   expr sqrt(const expr &rm) const;
 
   static expr fma(const expr &a, const expr &b, const expr &c, const expr &rm);

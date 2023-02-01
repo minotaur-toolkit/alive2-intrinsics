@@ -212,6 +212,9 @@ static bool error(Errors &errs, const State &src_state, const State &tgt_state,
         if (m.eval(val.return_domain).isFalse()) {
           s << *var << " = function did not return!\n";
           break;
+        } else if (m.eval(val.domain).isFalse()) {
+          s << "Function " << call->getFnName() << " triggered UB\n";
+          continue;
         } else if (var->isVoid()) {
           s << "Function " << call->getFnName() << " returned\n";
           continue;
@@ -359,7 +362,10 @@ encode_undef_refinement_per_elem(const Type &ty, const StateValue &sva,
 }
 
 // Returns negation of refinement
-static expr encode_undef_refinement(const Type &type, const State::ValTy &a,
+static expr encode_undef_refinement(const State &src_state,
+                                    const State &tgt_state,
+                                    const Type &type,
+                                    const State::ValTy &a,
                                     const State::ValTy &b) {
   // Undef refinement: (src-nonpoison /\ src-nonundef) -> tgt-nonundef
   //
@@ -367,6 +373,8 @@ static expr encode_undef_refinement(const Type &type, const State::ValTy &a,
   //   forall I .
   //    (forall N . src_nonpoison(I, N) /\ retval_src(I, N) == retval_src(I, 0))
   //      -> (forall N . retval_tgt(I, N) == retval_tgt(I, 0)
+  // FIXME? this is an approximation. Instead of 0, it should be N' because
+  // 0 may fail a precondition.
 
   if (dynamic_cast<const VoidType *>(&type))
     return false;
@@ -374,16 +382,26 @@ static expr encode_undef_refinement(const Type &type, const State::ValTy &a,
     // target is never undef
     return false;
 
-  auto subst = [](const auto &val) {
+  auto subst = [](const State &state, const auto &val) {
     vector<pair<expr, expr>> repls;
     for (auto &v : val.undef_vars) {
       repls.emplace_back(v, expr::some(v));
     }
+
+    // We need to consider fresh variables that are produced for specific
+    // expressions. Since we are now rewriting those expressions, those
+    // variables *may* need to be refreshed.
+    if (!repls.empty()) {
+      for (auto &v : state.getNondetVars()) {
+        repls.emplace_back(v, expr::some(v));
+      }
+    }
     return val.val.value.subst(repls);
   };
 
-  return encode_undef_refinement_per_elem(type, a.val, subst(a),
-                                          expr(b.val.value), subst(b));
+  return encode_undef_refinement_per_elem(type, a.val, subst(src_state, a),
+                                          expr(b.val.value),
+                                          subst(tgt_state, b));
 }
 
 static void
@@ -401,6 +419,8 @@ check_refinement(Errors &errs, const Transform &t, State &src_state,
   auto &uvars = ap.undef_vars;
   auto qvars = src_state.getQuantVars();
   qvars.insert(ap.undef_vars.begin(), ap.undef_vars.end());
+  auto &src_nondet_vars = src_state.getNondetVars();
+  qvars.insert(src_nondet_vars.begin(), src_nondet_vars.end());
   auto &fn_qvars = tgt_state.getFnQuantVars();
   qvars.insert(fn_qvars.begin(), fn_qvars.end());
 
@@ -521,7 +541,7 @@ check_refinement(Errors &errs, const Transform &t, State &src_state,
         print_value, "Target is more poisonous than source");
 
   // 4. Check undef
-  CHECK(dom && encode_undef_refinement(type, ap, bp),
+  CHECK(dom && encode_undef_refinement(src_state, tgt_state, type, ap, bp),
         print_value, "Target's return value is more undefined");
 
   // 5. Check value
@@ -900,11 +920,16 @@ void calculateAndInitConstants(Transform &t) {
       if (auto fn = dynamic_cast<const FnCall*>(&i)) {
         has_fncall |= true;
         if (!fn->getAttributes().isAlloc()) {
-          if (fn->hasAttribute(FnAttrs::InaccessibleMemOnly)) {
+          if (fn->getAttributes().mem.canOnlyWrite(MemoryAccess::Inaccessible)) {
             if (inaccessiblememonly_fns.emplace(fn->getName()).second)
               ++num_inaccessiblememonly_fns;
           } else {
-            has_write_fncall |= !fn->hasAttribute(FnAttrs::NoWrite);
+            if (fn->getAttributes().mem
+                                   .canOnlyRead(MemoryAccess::Inaccessible)) {
+              if (inaccessiblememonly_fns.emplace(fn->getName()).second)
+                ++num_inaccessiblememonly_fns;
+            }
+            has_write_fncall |= fn->getAttributes().mem.canWriteSomething();
           }
         }
       }
@@ -1477,7 +1502,7 @@ void Transform::preprocess() {
       for (auto bb : fn->getBBs()) {
         for (auto &i : bb->instrs()) {
           auto i_ptr = const_cast<Instr*>(&i);
-          if (hasNoSideEffects(i) && !users.count(i_ptr))
+          if (!i.hasSideEffects() && !users.count(i_ptr))
             to_remove.emplace_back(i_ptr);
         }
 
@@ -1510,8 +1535,10 @@ void Transform::print(ostream &os, const TransformPrintOpts &opt) const {
     os << '\n';
   }
   src.print(os, opt.print_fn_header);
-  os << "=>\n";
-  tgt.print(os, opt.print_fn_header);
+  if (!opt.skip_tgt) {
+    os << "=>\n";
+    tgt.print(os, opt.print_fn_header);
+  }
 }
 
 ostream& operator<<(ostream &os, const Transform &t) {

@@ -15,6 +15,9 @@ class DataLayout;
 class Instruction;
 class Type;
 class Value;
+class Module;
+class LLVMContext;
+class Function;
 }
 
 namespace IR {
@@ -32,7 +35,6 @@ IR::FastMathFlags parse_fmath(llvm::Instruction &i);
 IR::BasicBlock& getBB(const llvm::BasicBlock *bb);
 
 std::string value_name(const llvm::Value &v);
-void remove_value_name(const llvm::Value &v);
 
 IR::Type& get_int_type(unsigned bits);
 IR::Type* llvm_type2alive(const llvm::Type *ty);
@@ -43,6 +45,7 @@ IR::Value* get_operand(llvm::Value *v,
   std::function<IR::Value*(IR::AggregateValue *)> copy_inserter);
 
 void add_identifier(const llvm::Value &llvm, IR::Value &v);
+void replace_identifier(const llvm::Value &llvm, IR::Value &v);
 
 #define PRINT(T) std::ostream& operator<<(std::ostream &os, const T &x);
 PRINT(llvm::Type)
@@ -54,5 +57,11 @@ void init_llvm_utils(std::ostream &os, const llvm::DataLayout &DL);
 std::ostream& get_outs();
 void set_outs(std::ostream &os);
 
+void reset_state();
 void reset_state(IR::Function &f);
+
+std::unique_ptr<llvm::Module> openInputFile(llvm::LLVMContext &Context,
+                                            const std::string &InputFilename);
+llvm::Function *findFunction(llvm::Module &M, const std::string &FName);
+
 }
