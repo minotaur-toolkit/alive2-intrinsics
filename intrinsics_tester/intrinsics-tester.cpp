@@ -1,6 +1,6 @@
-// Copyright (c) 2021-present The Alive2 Authors.
+// Copyright (c) 2021-present Stefan Mada.
 // Distributed under the MIT license that can be found in the LICENSE file.
-// Version: February 23, 2022
+// Version: January 30, 2023
 
 #include "JIT.h"
 #include "commandLineUtil.h"
@@ -15,6 +15,10 @@
 #include "x86Intrin.h"
 #include <chrono>
 
+using namespace std;
+using namespace Tester;
+using namespace llvm;
+
 int main(int argc, char **argv) {
   CommandLineUtil commandLineUtil(argc, argv);
 
@@ -24,16 +28,16 @@ int main(int argc, char **argv) {
   // Initialize llvm module and intrinsic module
   InitializeModule();
 
-  std::unique_ptr<llvm::orc::JIT> JITCompiler = Tester::generateIntrinsicJIT();
+  unique_ptr<JIT> JITCompiler = generateIntrinsicJIT();
 
   switchToAliveContext();
 
   // Initialize Alive2
-  llvm::Triple targetTriple(TheModule.get()->getTargetTriple());
-  llvm::TargetLibraryInfoWrapperPass TLI(targetTriple);
+  Triple targetTriple(TheModule.get()->getTargetTriple());
+  TargetLibraryInfoWrapperPass TLI(targetTriple);
 
   // Set up output stream for Alive2 info, then set up smt
-  out = &std::cout;
+  out = &cout;
   smt_init.emplace();
 
   // Loop that evaluates every intrinsic
@@ -42,7 +46,7 @@ int main(int argc, char **argv) {
   uint64_t numberOfIntrinsicsTested = 0;
   ProgressBar progressBar(lowerBound, upperBound); // Subtract MMX instructions
 
-  auto start = std::chrono::steady_clock::now();
+  auto start = chrono::steady_clock::now();
 
   static_for<loopCount>([&](auto index) {
     if (index < lowerBound || index >= upperBound)
@@ -65,40 +69,40 @@ int main(int argc, char **argv) {
 
       // Code below initializes the vectors to 0 with the proper types for the
       // operation
-      auto vals = std::get<vectorTypeIndex<op0BitSize>()>(
+      auto vals = get<vectorTypeIndex<op0BitSize>()>(
           returnVectorType<op0BitSize>());
-      auto vals2 = std::get<vectorTypeIndex<op1BitSize>()>(
+      auto vals2 = get<vectorTypeIndex<op1BitSize>()>(
           returnVectorType<op1BitSize>());
-      auto retVec = std::get<vectorTypeIndex<retBitSize>()>(
+      auto retVec = get<vectorTypeIndex<retBitSize>()>(
           returnVectorType<retBitSize>());
 
       // Defines the function pointer type that the function should use,
       // ie auomatically chooses return, op1, and op2 types
-      using returnType = std::conditional_t<
+      using returnType = conditional_t<
           retBitSize != 512,
-          std::conditional_t<retBitSize == 256, __m256i, __m128i>, __m512i>;
-      using op0Type = std::conditional_t<
+          conditional_t<retBitSize == 256, __m256i, __m128i>, __m512i>;
+      using op0Type = conditional_t<
           op0BitSize != 512,
-          std::conditional_t<op0BitSize == 256, __m256i, __m128i>, __m512i>;
-      using op1Type = std::conditional_t<
+          conditional_t<op0BitSize == 256, __m256i, __m128i>, __m512i>;
+      using op1Type = conditional_t<
           op1BitSize != 512,
-          std::conditional_t<
+          conditional_t<
               op1BitSize == 256, __m256i,
-              std::conditional_t<op1BitSize == 32, int32_t, __m128i>>,
+              conditional_t<op1BitSize == 32, int32_t, __m128i>>,
           __m512i>;
 
       typedef returnType (*opFunctionType)(op0Type, op1Type);
 
       auto *funcPointer = reinterpret_cast<opFunctionType>(
-          JITCompiler->getFuncAddress("func" + std::to_string(index.value)));
+          JITCompiler->getFuncAddress("func" + to_string(index.value)));
 
       // Declare the intrinsic to be used
-      llvm::Function *intrinsicFunction = llvm::Intrinsic::getDeclaration(
+      Function *intrinsicFunction = Intrinsic::getDeclaration(
           TheModule.get(), TesterX86IntrinBinOp::intrin_id.at((int)op));
 
       // Map that counts how often certain end results are reached
-      std::unordered_map<VectorWrapper<retBitwidth, retBitSize, returnType>,
-                         int, VectorWrapperHashFn>
+      unordered_map<VectorWrapper<retBitwidth, retBitSize, returnType>,
+                    int, VectorWrapperHashFn>
           resultMap;
 
       // Loop that tests for the equality of both functions for equal inputs
@@ -112,9 +116,9 @@ int main(int argc, char **argv) {
 
         retVec = funcPointer(vals, vals2);
 
-        llvm::Function *tgtFunc =
+        Function *tgtFunc =
             generateReturnFunction<retBitwidth>(retVec, "tgt");
-        llvm::Function *srcFunc =
+        Function *srcFunc =
             generateCallFunction<op0Bitwidth, op1Bitwidth>(
                 vals, vals2, intrinsicFunction, "src");
 
@@ -140,7 +144,7 @@ int main(int argc, char **argv) {
         ++numberOfTestsPerformed;
       }
       if (enableDebug) {
-        std::cout << "Number of repetitions for func" << index.value << ": ";
+        cout << "Number of repetitions for func" << index.value << ": ";
         int numberOfRepetitions = 0;
         VectorWrapper<retBitwidth, retBitSize, returnType> mostCommonVec;
         int mostNumberOfAppearances = 0;
@@ -151,12 +155,12 @@ int main(int argc, char **argv) {
             mostCommonVec = it.first;
           }
         }
-        std::cout << numberOfRepetitions;
+        cout << numberOfRepetitions;
         if (numberOfRepetitions > 0) {
-          std::cout << " | Vector: ";
+          cout << " | Vector: ";
           mostCommonVec.printVec();
         }
-        std::cout << "\n";
+        cout << "\n";
       }
 
       ++numberOfIntrinsicsTested;
@@ -165,17 +169,17 @@ int main(int argc, char **argv) {
     }
   });
 
-  auto end = std::chrono::steady_clock::now();
+  auto end = chrono::steady_clock::now();
   auto minutesTaken =
-      std::chrono::duration_cast<std::chrono::minutes>(end - start);
+       chrono::duration_cast<chrono::minutes>(end - start);
 
-  std::cout << "\nRan " << numberOfTestsPerformed << " tests on "
-            << numberOfIntrinsicsTested << " intrinsics."
-            << "\nNumber of minutes taken: " << minutesTaken.count()
-            << "\nNum correct: " << num_correct
-            << "\nNum unsound: " << num_unsound
-            << "\nNum failed: " << num_failed << "\nNum errors: " << num_errors
-            << "\n";
+  cout << "\nRan " << numberOfTestsPerformed << " tests on "
+       << numberOfIntrinsicsTested << " intrinsics."
+       << "\nNumber of minutes taken: " << minutesTaken.count()
+       << "\nNum correct: " << num_correct
+       << "\nNum unsound: " << num_unsound
+       << "\nNum failed: " << num_failed << "\nNum errors: " << num_errors
+       << "\n";
 
   return 0;
 }

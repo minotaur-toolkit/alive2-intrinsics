@@ -1,8 +1,8 @@
 #pragma once
 
-// Copyright (c) 2021-present The Alive2 Authors.
+// Copyright (c) 2021-present Stefan Mada
 // Distributed under the MIT license that can be found in the LICENSE file.
-// Version: April 7, 2022
+// Version: January 30, 2023
 
 #include <algorithm>
 #include <cstdlib>
@@ -26,8 +26,6 @@ struct CommandLineUtil {
 
     for (int i = 1; i < argc; ++i) {
       std::string arg(argv[i]);
-      // All args are made lowercase
-      std::transform(arg.begin(), arg.end(), arg.begin(), ::tolower);
       arguments.push_back(arg);
     }
 
@@ -37,7 +35,7 @@ struct CommandLineUtil {
     }
 
     setNumberOfRepetitions();
-    useDebugMode = containsArg("-d") ? true : false;
+    useDebugMode = containsArg("-d");
     setRangeOfFunctionsToTest();
   }
 
@@ -46,10 +44,7 @@ private:
   std::vector<std::string> arguments;
 
   bool containsArg(std::string arg) {
-    if (std::find(arguments.begin(), arguments.end(), arg) != arguments.end())
-      return true;
-    else
-      return false;
+    return std::find(arguments.begin(), arguments.end(), arg) != arguments.end();
   }
 
   inline bool isInteger(const std::string &s) {

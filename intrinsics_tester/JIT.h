@@ -1,8 +1,8 @@
 #pragma once
 
-// Copyright (c) 2021-present The Alive2 Authors.
+// Copyright (c) 2021-present Stefan Mada
 // Distributed under the MIT license that can be found in the LICENSE file.
-// Version: April 7, 2022
+// Version: January 30, 2023
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ExecutionEngine/JITSymbol.h"
@@ -27,32 +27,32 @@
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetOptions.h"
 
-namespace llvm {
-namespace orc {
+
+namespace Tester {
 
 class JIT {
 private:
-  std::unique_ptr<ExecutionSession> ES;
+  std::unique_ptr<llvm::orc::ExecutionSession> ES;
 
-  DataLayout DL;
-  MangleAndInterner Mangle;
+  llvm::DataLayout DL;
+  llvm::orc::MangleAndInterner Mangle;
 
-  RTDyldObjectLinkingLayer ObjectLayer;
-  IRCompileLayer CompileLayer;
+  llvm::orc::RTDyldObjectLinkingLayer ObjectLayer;
+  llvm::orc::IRCompileLayer CompileLayer;
 
-  JITDylib &MainJD;
+  llvm::orc::JITDylib &MainJD;
 
 public:
-  JIT(std::unique_ptr<ExecutionSession> ES, JITTargetMachineBuilder JTMB,
-      DataLayout DL)
+  JIT(std::unique_ptr<llvm::orc::ExecutionSession> ES, llvm::orc::JITTargetMachineBuilder JTMB,
+      llvm::DataLayout DL)
       : ES(std::move(ES)), DL(std::move(DL)), Mangle(*this->ES, this->DL),
         ObjectLayer(*this->ES,
                     []() { return std::make_unique<SectionMemoryManager>(); }),
         CompileLayer(*this->ES, ObjectLayer,
-                     std::make_unique<ConcurrentIRCompiler>(std::move(JTMB))),
+                     std::make_unique<llvm::orc::ConcurrentIRCompiler>(std::move(JTMB))),
         MainJD(this->ES->createBareJITDylib("<main>")) {
     MainJD.addGenerator(
-        cantFail(DynamicLibrarySearchGenerator::GetForCurrentProcess(
+        cantFail(llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
             DL.getGlobalPrefix())));
   }
 
@@ -62,11 +62,11 @@ public:
   }
 
   static Expected<std::unique_ptr<JIT>> Create() {
-    auto EPC = SelfExecutorProcessControl::Create();
+    auto EPC = llvm::orc::SelfExecutorProcessControl::Create();
     if (!EPC)
       return EPC.takeError();
 
-    auto ES = std::make_unique<ExecutionSession>(std::move(*EPC));
+    auto ES = std::make_unique<llvm::orc::ExecutionSession>(std::move(*EPC));
     auto triple = ES->getExecutorProcessControl().getTargetTriple();
 
     auto expectedMachineBuilder =
@@ -78,7 +78,7 @@ public:
       exit(-1);
     }
 
-    JITTargetMachineBuilder JTMB = *expectedMachineBuilder;
+    llvm::orc::JITTargetMachineBuilder JTMB = *expectedMachineBuilder;
 
     auto DL = JTMB.getDefaultDataLayoutForTarget();
     if (!DL)
@@ -88,21 +88,21 @@ public:
                                  std::move(*DL));
   }
 
-  const DataLayout &getDataLayout() const { return DL; }
+  const llvm::DataLayout &getDataLayout() const { return DL; }
 
-  JITDylib &getMainJITDylib() { return MainJD; }
+  llvm::orc::JITDylib &getMainJITDylib() { return MainJD; }
 
-  Error addModule(ThreadSafeModule TSM, ResourceTrackerSP RT = nullptr) {
+  llvm::Error addModule(llvm::orc::ThreadSafeModule TSM, llvm::orc::ResourceTrackerSP RT = nullptr) {
     if (!RT)
       RT = MainJD.getDefaultResourceTracker();
     return CompileLayer.add(RT, std::move(TSM));
   }
 
-  Expected<JITEvaluatedSymbol> lookup(StringRef Name) {
+  llvm::Expected<llvm::JITEvaluatedSymbol> lookup(llvm::StringRef Name) {
     return ES->lookup({&MainJD}, Mangle(Name.str()));
   }
 
-  JITTargetAddress getFuncAddress(std::string str) {
+  llvm::JITTargetAddress getFuncAddress(std::string str) {
     auto funcLookup = lookup(str);
 
     if (auto E = funcLookup.takeError()) {
@@ -114,25 +114,22 @@ public:
   }
 };
 
-} // end namespace orc
-} // end namespace llvm
 
-namespace Tester {
-std::unique_ptr<llvm::orc::JIT> generateIntrinsicJIT() {
+std::unique_ptr<Tester::JIT> generateIntrinsicJIT() {
   // Initialize native target information for Just In Time Compiler
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmParser();
   llvm::InitializeNativeTargetAsmPrinter();
 
   // Initialize Just In Time Compiler
-  auto JITInit = llvm::orc::JIT::Create();
+  auto JITInit = Tester::JIT::Create();
 
   // Below executes if initializing JIT failed
   if (auto E = JITInit.takeError()) {
     llvm::errs() << "Problem with JIT " << toString(std::move(E)) << "\n";
     exit(-1);
   }
-  std::unique_ptr<llvm::orc::JIT> JITCompiler = std::move(*JITInit);
+  std::unique_ptr<Tester::JIT> JITCompiler = std::move(*JITInit);
 
   // Set data layout of module
   TheModule->setDataLayout(JITCompiler->getDataLayout());
