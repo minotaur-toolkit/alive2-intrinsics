@@ -1,6 +1,6 @@
-// Copyright (c) 2018-present The Alive2 Authors.
+// Copyright (c) 2018-present The Alive2 Authors and Stefan Mada.
 // Distributed under the MIT license that can be found in the LICENSE file.
-// Version: December 5, 2021
+// Version: January 30, 2023
 
 #include "llvm_util/llvm2alive.h"
 #include "smt/smt.h"

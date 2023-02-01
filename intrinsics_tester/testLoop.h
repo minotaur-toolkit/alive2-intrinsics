@@ -1,8 +1,8 @@
 #pragma once
 
-// Copyright (c) 2021-present The Alive2 Authors.
+// Copyright (c) 2021-present Stefan Mada
 // Distributed under the MIT license that can be found in the LICENSE file.
-// Version: April 7, 2022
+// Version: January 30, 2023
 
 #include <utility>
 
