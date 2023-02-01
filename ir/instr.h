@@ -1196,6 +1196,8 @@ public:
               Value &v1, Value &v2, Value &mask)
     : Instr(type, std::move(name)), v1(&v1), v2(&v2), mask(&mask) {}
   std::vector<Value*> operands() const override;
+  bool propagatesPoison() const override;
+  bool hasSideEffects() const override;
   void rauw(const Value &what, Value &with) override;
   void print(std::ostream &os) const override;
   StateValue toSMT(State &s) const override;
@@ -1245,6 +1247,8 @@ public:
   X86IntrinBinOp(Type &type, std::string &&name, Value &a, Value &b, Op op)
     : Instr(type, move(name)), a(&a), b(&b), op(op) {}
   std::vector<Value*> operands() const override;
+  bool propagatesPoison() const override;
+  bool hasSideEffects() const override;
   void rauw(const Value &what, Value &with) override;
   static std::string getOpName(Op op);
   void print(std::ostream &os) const override;
