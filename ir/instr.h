@@ -1245,7 +1245,7 @@ private:
 public:
   static unsigned getRetWidth(Op op) { return ret_width[op]; }
   X86IntrinBinOp(Type &type, std::string &&name, Value &a, Value &b, Op op)
-    : Instr(type, move(name)), a(&a), b(&b), op(op) {}
+    : Instr(type, std::move(name)), a(&a), b(&b), op(op) {}
   std::vector<Value*> operands() const override;
   bool propagatesPoison() const override;
   bool hasSideEffects() const override;
