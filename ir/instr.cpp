@@ -4743,7 +4743,7 @@ StateValue FakeShuffle::toSMT(State &s) const {
     expr np = expr::mkIf(m_v.ult(bound), v1p, v2p);
     expr inbounds = m_v.ult(expr::mkUInt(vty->numElementsConst() * 2, m_v));
 
-    vals.emplace_back(move(v), inbounds && np);
+    vals.emplace_back(std::move(v), inbounds && np);
   }
 
   return getType().getAsAggregateType()->aggregateVals(vals);
@@ -4896,7 +4896,7 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
     for (unsigned i = 0, e = aty->numElementsConst(); i != e; ++i) {
       auto ai = aty->extract(av, i);
       expr shift = fn(ai.value, shift_v.trunc(elem_bw));
-      vals.emplace_back(move(shift), shift_np && ai.non_poison);
+      vals.emplace_back(std::move(shift), shift_np && ai.non_poison);
     }
     return rty->aggregateVals(vals);
   }
@@ -5065,7 +5065,7 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
       auto ai = expr::mkIf(b.extract(7, 7) == expr::mkUInt(0, 1), r,
                            expr::mkUInt(0, 8));
 
-      vals.emplace_back(move(ai), bp && rp);
+      vals.emplace_back(std::move(ai), bp && rp);
     }
     return rty->aggregateVals(vals);
   }
@@ -5207,7 +5207,8 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
                                     expr::mkInt(-1, sz_a),
                                     expr::mkUInt(0, sz_a));
         expr inbounds = a.ashr(b.zextOrTrunc(sz_a));
-        return expr::mkIf(move(check), move(outbounds), move(inbounds));
+        return expr::mkIf(std::move(check), std::move(outbounds),
+                          std::move(inbounds));
       };
       break;
     case x86_sse2_psrli_w:
@@ -5224,7 +5225,8 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
         expr check = b.uge(expr::mkUInt(sz_a, 32));
         expr outbounds = expr::mkUInt(0, sz_a);
         expr inbounds = a.lshr(b.zextOrTrunc(sz_a));
-        return expr::mkIf(move(check), move(outbounds), move(inbounds));
+        return expr::mkIf(std::move(check), std::move(outbounds),
+                          std::move(inbounds));
       };
       break;
     case x86_sse2_pslli_w:
@@ -5241,7 +5243,8 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
         expr check = b.uge(expr::mkUInt(sz_a, 32));
         expr outbounds = expr::mkUInt(0, sz_a);
         expr inbounds = a << b.zextOrTrunc(sz_a);
-        return expr::mkIf(move(check), move(outbounds), move(inbounds));
+        return expr::mkIf(std::move(check), std::move(outbounds),
+                          std::move(inbounds));
       };
       break;
     default: UNREACHABLE();
@@ -5272,10 +5275,10 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
           op == x86_avx2_pmadd_wd ||
           op == x86_avx512_pmaddw_d_512) {
         expr v = a1.sext(16) * b1.sext(16) + a2.sext(16) * b2.sext(16);
-        vals.emplace_back(move(v), move(np));
+        vals.emplace_back(std::move(v), std::move(np));
       } else {
         expr v = (a1.zext(8) * b1.sext(8)).sadd_sat(a2.zext(8) * b2.sext(8));
-        vals.emplace_back(move(v), move(np));
+        vals.emplace_back(std::move(v), std::move(np));
       }
     }
     return rty->aggregateVals(vals);
@@ -5321,11 +5324,11 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
     for (unsigned j = 0; j != laneCount / groupsize; j ++) {
       for (unsigned i = 0; i != groupsize; i ++) {
         auto [a1, p1] = aty->extract(av, j * groupsize + i);
-        vals.emplace_back(fn(move(a1)), move(p1));
+        vals.emplace_back(fn(std::move(a1)), std::move(p1));
       }
       for (unsigned i = 0; i != groupsize; i ++) {
         auto [b1, p1] = aty->extract(bv, j * groupsize + i);
-        vals.emplace_back(fn(move(b1)), move(p1));
+        vals.emplace_back(fn(std::move(b1)), std::move(p1));
       }
     }
     return rty->aggregateVals(vals);
@@ -5347,7 +5350,7 @@ StateValue X86IntrinBinOp::toSMT(State &s) const {
         else
           v = v + (a.zext(8) - b.zext(8)).abs();
       }
-      vals.emplace_back(v.zext(48), move(np));
+      vals.emplace_back(v.zext(48), std::move(np));
     }
     return rty->aggregateVals(vals);
   }
