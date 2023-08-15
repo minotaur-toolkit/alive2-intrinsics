@@ -4783,7 +4783,7 @@ void X86IntrinBinOp::rauw(const Value &what, Value &with) {
 string X86IntrinBinOp::getOpName(Op op) {
   switch (op) {
 #define PROCESS(NAME,A,B,C,D,E,F) case NAME: return #NAME;
-#include "intrinsics.h"
+#include "intrinsics_binop.h"
 #undef PROCESS
   }
   UNREACHABLE();
@@ -5381,6 +5381,94 @@ expr X86IntrinBinOp::getTypeConstraints(const Function &f) const {
 
 unique_ptr<Instr> X86IntrinBinOp::dup(Function &f, const string &suffix) const {
   return make_unique<X86IntrinBinOp>(getType(), getName() + suffix, *a, *b, op);
+}
+
+string X86IntrinTerOp::getOpName(Op op) {
+  switch (op) {
+#define PROCESS(NAME,A,B,C,D,E,F,G,H) case NAME: return #NAME;
+#include "intrinsics_terop.h"
+#undef PROCESS
+  }
+  UNREACHABLE();
+}
+
+void X86IntrinTerOp::print(ostream &os) const {
+  os << getName() << " = " << getOpName(op) << " " << *a << ", " << *b;
+}
+
+StateValue X86IntrinTerOp::toSMT(State &s) const {
+  auto rty =    getType().getAsAggregateType();
+  auto aty = a->getType().getAsAggregateType();
+  auto bty = b->getType().getAsAggregateType();
+  auto cty = c->getType().getAsAggregateType();
+  auto &av = s[*a];
+  auto &bv = s[*b];
+  auto &cv = s[*c];
+
+  switch (op) {
+  case x86_avx2_pblendvb:
+  {
+    vector<StateValue> vals;
+
+    for (int i = 0 ; i < 32 ; ++ i) {
+      auto [a, ap] = aty->extract(av, i);
+      auto [b, bp] = bty->extract(bv, i);
+      auto [c, cp] = cty->extract(cv, i);
+      auto v = expr::mkIf(c.extract(7, 7) == expr::mkUInt(0, 1), a, b);
+      vals.emplace_back(std::move(v), ap && bp && cp);
+    }
+    return rty->aggregateVals(vals);
+  }
+  // TODO: add semantic for other intrinsics
+  default:
+    UNREACHABLE();
+  }
+}
+
+expr X86IntrinTerOp::getTypeConstraints(const Function &f) const {
+  return Value::getTypeConstraints() &&
+    (shape_op0[op].first != 1
+      ? a->getType().enforceVectorType(
+          [this](auto &ty) {return ty.enforceIntType(shape_op0[op].second);}) &&
+        a->getType().getAsAggregateType()->numElements() == shape_op0[op].first
+      : a->getType().enforceIntType(shape_op0[op].second)) &&
+    (shape_op1[op].first != 1
+      ? b->getType().enforceVectorType(
+          [this](auto &ty) {return ty.enforceIntType(shape_op1[op].second);}) &&
+        b->getType().getAsAggregateType()->numElements() == shape_op1[op].first
+      : b->getType().enforceIntType(shape_op1[op].second)) &&
+    (shape_op2[op].first != 1
+      ? b->getType().enforceVectorType(
+          [this](auto &ty) {return ty.enforceIntType(shape_op2[op].second);}) &&
+        b->getType().getAsAggregateType()->numElements() == shape_op2[op].first
+      : b->getType().enforceIntType(shape_op2[op].second)) &&
+    (shape_ret[op].first != 1
+      ? getType().enforceVectorType(
+          [this](auto &ty) {return ty.enforceIntType(shape_ret[op].second);}) &&
+        getType().getAsAggregateType()->numElements() == shape_ret[op].first
+      : getType().enforceIntType(shape_ret[op].second));
+}
+
+unique_ptr<Instr> X86IntrinTerOp::dup(Function &f, const string &suffix) const {
+  return make_unique<X86IntrinTerOp>(getType(), getName() + suffix, *a, *b, *c, op);
+}
+
+vector<Value*> X86IntrinTerOp::operands() const {
+  return { a, b, c };
+}
+
+bool X86IntrinTerOp::propagatesPoison() const {
+  return true;
+}
+
+bool X86IntrinTerOp::hasSideEffects() const {
+  return false;
+}
+
+void X86IntrinTerOp::rauw(const Value &what, Value &with) {
+  RAUW(a);
+  RAUW(b);
+  RAUW(c);
 }
 
 
