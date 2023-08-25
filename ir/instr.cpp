@@ -18,6 +18,8 @@ using namespace smt;
 using namespace util;
 using namespace std;
 
+bool useApprox = true;
+
 #define RAUW(val)    \
   if (val == &what)  \
     val = &with
@@ -807,26 +809,51 @@ StateValue FpBinOp::toSMT(State &s) const {
 
   switch (op) {
   case FAdd:
-    fn = [](const expr &a, const expr &b, FpRoundingMode rm) {
-      return a.fadd(b, rm.toSMT());
+    fn = [&s](const expr &a, const expr &b, FpRoundingMode rm) {
+      if (useApprox) {
+        expr fadd =  expr::mkUF("fadd_appprox", { a, b }, a);
+        s.doesApproximation("fadd_approx", fadd);
+        return fadd;
+      } else {
+        return a.fadd(b, rm.toSMT());
+      }
     };
     break;
 
   case FSub:
-    fn = [](const expr &a, const expr &b, FpRoundingMode rm) {
-      return a.fsub(b, rm.toSMT());
+    fn = [&s](const expr &a, const expr &b, FpRoundingMode rm) {
+      //return a.fsub(b, rm.toSMT());
+      if (useApprox) {
+        expr fsub =  expr::mkUF("fsub_appprox", { a, b }, a);
+        s.doesApproximation("fsub_approx", fsub);
+        return fsub;
+      } else {
+        return a.fsub(b, rm.toSMT());
+      }
     };
     break;
 
   case FMul:
-    fn = [](const expr &a, const expr &b, FpRoundingMode rm) {
-      return a.fmul(b, rm.toSMT());
+    fn = [&s](const expr &a, const expr &b, FpRoundingMode rm) {
+      if (useApprox) {
+        expr fmul =  expr::mkUF("fmul_appprox", { a, b }, a);
+        s.doesApproximation("fsub_approx", fmul);
+        return fmul;
+      } else {
+        return a.fmul(b, rm.toSMT());
+      }
     };
     break;
 
   case FDiv:
-    fn = [](const expr &a, const expr &b, FpRoundingMode rm) {
-      return a.fdiv(b, rm.toSMT());
+    fn = [&s](const expr &a, const expr &b, FpRoundingMode rm) {
+      if (useApprox) {
+        expr fdiv =  expr::mkUF("fdiv_approx", { a, b }, a);
+        s.doesApproximation("fdiv_approx", fdiv);
+        return fdiv;
+      } else {
+        return a.fdiv(b, rm.toSMT());
+      }
     };
     break;
 
@@ -842,31 +869,53 @@ StateValue FpBinOp::toSMT(State &s) const {
   case FMin:
   case FMax:
     fn = [&](const expr &a, const expr &b, FpRoundingMode rm) {
-      expr ndet = s.getFreshNondetVar("maxminnondet", true);
-      auto ndz = expr::mkIf(ndet, expr::mkNumber("0", a),
-                            expr::mkNumber("-0", a));
+      if (useApprox) {
+        expr fm =  op == FMin ? expr::mkUF("fmin_approx", { a, b }, a)
+                              : expr::mkUF("fmax_approx", { a, b }, a);
+        if (op == FMin)
+          s.doesApproximation("fmin_approx", fm);
+        else
+          s.doesApproximation("fmax_approx", fm);
 
-      expr z = a.isFPZero() && b.isFPZero();
-      expr cmp = op == FMin ? a.fole(b) : a.foge(b);
-      return expr::mkIf(a.isNaN(), b,
-                        expr::mkIf(b.isNaN(), a,
-                                   expr::mkIf(z, ndz,
-                                              expr::mkIf(cmp, a, b))));
+        return fm;
+      } else {
+        expr ndet = s.getFreshNondetVar("maxminnondet", true);
+        auto ndz = expr::mkIf(ndet, expr::mkNumber("0", a),
+                              expr::mkNumber("-0", a));
+
+        expr z = a.isFPZero() && b.isFPZero();
+        expr cmp = op == FMin ? a.fole(b) : a.foge(b);
+        return expr::mkIf(a.isNaN(), b,
+                          expr::mkIf(b.isNaN(), a,
+                                    expr::mkIf(z, ndz,
+                                                expr::mkIf(cmp, a, b))));
+      }
     };
     break;
 
   case FMinimum:
   case FMaximum:
     fn = [&](const expr &a, const expr &b, FpRoundingMode rm) {
-      expr zpos = expr::mkNumber("0", a), zneg = expr::mkNumber("-0", a);
-      expr cmp = (op == FMinimum) ? a.fole(b) : a.foge(b);
-      expr neg_cond = op == FMinimum ? (a.isFPNegative() || b.isFPNegative())
-                                     : (a.isFPNegative() && b.isFPNegative());
-      expr e = expr::mkIf(a.isFPZero() && b.isFPZero(),
-                          expr::mkIf(neg_cond, zneg, zpos),
-                          expr::mkIf(cmp, a, b));
+      if (useApprox) {
+        expr fm =  op == FMinimum ? expr::mkUF("fminimum_approx", { a, b }, a)
+                                  : expr::mkUF("fmaximum_approx", { a, b }, a);
+        if (op == FMinimum)
+          s.doesApproximation("fminimum_approx", fm);
+        else
+          s.doesApproximation("fmaximum_approx", fm);
 
-      return expr::mkIf(a.isNaN(), a, expr::mkIf(b.isNaN(), b, e));
+        return fm;
+      } else {
+        expr zpos = expr::mkNumber("0", a), zneg = expr::mkNumber("-0", a);
+        expr cmp = (op == FMinimum) ? a.fole(b) : a.foge(b);
+        expr neg_cond = op == FMinimum ? (a.isFPNegative() || b.isFPNegative())
+                                      : (a.isFPNegative() && b.isFPNegative());
+        expr e = expr::mkIf(a.isFPZero() && b.isFPZero(),
+                            expr::mkIf(neg_cond, zneg, zpos),
+                            expr::mkIf(cmp, a, b));
+
+        return expr::mkIf(a.isNaN(), a, expr::mkIf(b.isNaN(), b, e));
+      }
     };
     break;
 
