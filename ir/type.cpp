@@ -427,6 +427,7 @@ expr FloatType::getFloat(const expr &v) const {
 expr FloatType::fromFloat(State &s, const expr &fp, const Type &from_type0,
                           unsigned nary, const expr &a, const expr &b,
                           const expr &c) const {
+#if (false)
   expr isnan = fp.isNaN();
   expr val = fp.float2BV();
 
@@ -487,7 +488,10 @@ expr FloatType::fromFloat(State &s, const expr &fp, const Type &from_type0,
   s.addNonDetVar(std::move(choice_var));
   s.addPre(std::move(pre));
 
-  return expr::mkIf(isnan, nan, val);
+  //return expr::mkIf(isnan, nan, val);
+#endif
+
+  return fp.float2BV();;
 }
 
 expr FloatType::isNaN(const expr &v, bool signalling) const {

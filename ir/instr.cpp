@@ -18,7 +18,7 @@ using namespace smt;
 using namespace util;
 using namespace std;
 
-bool useApprox = true;
+bool useApprox = false;
 
 #define RAUW(val)    \
   if (val == &what)  \
